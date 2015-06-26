@@ -5,7 +5,7 @@
 	<Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
 	<ProductVersion>10.0.20506</ProductVersion>
 	<SchemaVersion>2.0</SchemaVersion>
-	<ProjectGuid>{5EE6354A-5EA9-0651-0875-2B77AD179F4B}</ProjectGuid>
+	<ProjectGuid>{25F04F46-5785-DEE4-4518-C4EB6BCD911B}</ProjectGuid>
 	<OutputType>Library</OutputType>
 	<AppDesignerFolder>Properties</AppDesignerFolder>
 	<RootNamespace></RootNamespace>
@@ -52,7 +52,6 @@
      <Compile Include="Assets\Standard Assets\Scripts\General Scripts\ExpandTerrain.cs" />
      <Compile Include="Assets\Standard Assets\Scripts\General Scripts\NewBehaviourScript.cs" />
      <Compile Include="Assets\Standard Assets\Scripts\General Scripts\PushRigidBody.cs" />
-     <Compile Include="Assets\Standard Assets\Scripts\General Scripts\RemoveTerrain.cs" />
      <Compile Include="Assets\Standard Assets\Scripts\General Scripts\ShootBall.cs" />
      <Compile Include="Assets\Standard Assets\Water (Basic)\Sources\Scripts\WaterSimple.cs" />
      <None Include="Assets\Standard Assets\Projectors\Guidelines.txt" />

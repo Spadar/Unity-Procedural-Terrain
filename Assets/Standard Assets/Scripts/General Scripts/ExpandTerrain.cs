@@ -46,6 +46,7 @@ public class ExpandTerrain : MonoBehaviour
 			Debug.Log("Grid Coordinate: [" + coordinate.x + "," + coordinate.y + "]" );
 			currentCoordinate = coordinate;
 			CoordChangeEvent(currentCoordinate);
+			
 			cullTerrain();
 
 			for (int x = (int)coordinate.x - renderDistance; x < (int)coordinate.x + renderDistance; x++) {
@@ -57,13 +58,13 @@ public class ExpandTerrain : MonoBehaviour
 
 						if(existsInMap)
 						{
-							isNull = terrainMap[getTerrainName(x,y)] == null;
+							isNull = terrainMap[getTerrainName(x,y)].terrain == null;
 						}
 
-						if (!existsInMap || isNull) {
-
+						if (!existsInMap || isNull) 
+						{
+							//Generate the height map for the terrain in parallel
 							float[,] heights = null;
-
 							Thread heightmapThread = new Thread(delegate() 
 							{
 								heights = generateHeightMap(x,y);
@@ -95,7 +96,8 @@ public class ExpandTerrain : MonoBehaviour
 
 							terrainData.heightmapResolution = (int)size/2 + 1;
 							terrainData.size = dataSize;
-
+							
+							//Wait in case the heightmap hasn't been generated.
 							while(heights == null)
 							{
 							}
@@ -132,6 +134,7 @@ public class ExpandTerrain : MonoBehaviour
 			if(getGridDistance(tile.position, currentCoordinate) > renderDistance)
 			{
 				GameObject.DestroyImmediate(tile.terrain);
+				Resources.UnloadUnusedAssets();
 			}
 		}
 	}
