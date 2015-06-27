@@ -20,6 +20,11 @@ public class ExpandTerrain : MonoBehaviour
 
 	public GameObject terrainPrefab;
 	public int renderDistance;
+	
+	public int heightMapResolution;
+	
+	public int tileSize;
+	
 	private Vector2 currentCoordinate;
 	private float size;
 	private Vector3 dataSize;
@@ -30,16 +35,17 @@ public class ExpandTerrain : MonoBehaviour
 	public static event CoordChange OnCoordChange;
 
 	private Dictionary<string, TerrainTile> terrainMap = new Dictionary<string, TerrainTile>();
-	
+		
 	// Use this for initialization
 	void Start () {
 		Terrain terrain = (Terrain)terrainPrefab.GetComponent<Terrain>();
-		dataSize = new Vector3 (512, 512, 512);
+		dataSize = new Vector3 (tileSize, tileSize, tileSize);
 		size = dataSize.x;
 	}
 	
 	// Update is called once per frame
-	void Update () {
+	void Update () 
+	{
 		//We want to populate the surrounding X chunks around the player
 		//First, we find the XY coordinate of the player
 		Vector2 coordinate = getGridCoordinate (gameObject.transform.position);
@@ -48,73 +54,73 @@ public class ExpandTerrain : MonoBehaviour
 		{
 		updateCount = 0;
 		}
-		
-		if (updateCount == 0) {
-			Debug.Log("Grid Coordinate: [" + coordinate.x + "," + coordinate.y + "]" );
-			currentCoordinate = coordinate;
-			CoordChangeEvent(currentCoordinate);
+		Debug.Log("Grid Coordinate: [" + coordinate.x + "," + coordinate.y + "]" );
+		currentCoordinate = coordinate;
+		CoordChangeEvent(currentCoordinate);
 			
-			cullTerrain();
+		cullTerrain();
 
-			for (int x = (int)coordinate.x - renderDistance; x < (int)coordinate.x + renderDistance; x++) {
-				for (int y = (int)coordinate.y - renderDistance; y < (int)coordinate.y + renderDistance; y++) {
-					Vector2 terrainCoord = new Vector2(x,y);
-					if(getGridDistance(terrainCoord,coordinate) <= renderDistance){
-						bool existsInMap = terrainMap.ContainsKey(getTerrainName(x,y));
-						bool isNull = true;
+		for (int x = (int)coordinate.x - renderDistance; x < (int)coordinate.x + renderDistance; x++) 
+		{
+			for (int y = (int)coordinate.y - renderDistance; y < (int)coordinate.y + renderDistance; y++) 
+			{
+				Vector2 terrainCoord = new Vector2(x,y);
+				if(getGridDistance(terrainCoord,coordinate) <= renderDistance && updateCount == 0)
+				{
+					bool existsInMap = terrainMap.ContainsKey(getTerrainName(x,y));
+					bool isNull = true;
 
-						if(existsInMap)
+					if(existsInMap)
+					{
+						isNull = terrainMap[getTerrainName(x,y)].terrain == null;
+					}
+
+					if (!existsInMap || isNull) 
+					{
+						//Generate the height map for the terrain in parallel
+						float[,] heights = null;
+						Thread heightmapThread = new Thread(delegate() 
 						{
-							isNull = terrainMap[getTerrainName(x,y)].terrain == null;
+							heights = generateHeightMap(x,y);
+						});
+						heightmapThread.Start();
+
+						GameObject newTile = (GameObject)Object.Instantiate (terrainPrefab);
+
+						newTile.name = getTerrainName(x,y);
+
+						if(terrainMap.ContainsKey(newTile.name))
+						{
+							terrainMap.Remove(newTile.name);
+						}
+						terrainMap.Add(newTile.name, new TerrainTile(new Vector2(x,y), newTile));
+
+						newTile.transform.position = new Vector3 ((x - 250) * (size), 0, (y - 250) * (size));
+
+						newTile.AddComponent(typeof(Terrain));
+						Terrain terrain = (Terrain)newTile.GetComponent(typeof(Terrain));
+
+						newTile.AddComponent(typeof(TerrainCollider));
+						TerrainCollider collider = (TerrainCollider)newTile.GetComponent(typeof(TerrainCollider));
+						
+						TerrainData terrainData = new TerrainData();
+						
+						terrain.terrainData = terrainData;
+						collider.terrainData = terrainData;
+
+						terrainData.heightmapResolution = heightMapResolution;
+						terrainData.size = dataSize;
+						
+						generateTerrainTexture(terrainData);
+						
+						//Wait in case the heightmap hasn't been generated.
+						while(heights == null)
+						{
 						}
 
-						if (!existsInMap || isNull) 
-						{
-							//Generate the height map for the terrain in parallel
-							float[,] heights = null;
-							Thread heightmapThread = new Thread(delegate() 
-							{
-								heights = generateHeightMap(x,y);
-							});
-							heightmapThread.Start();
-
-							GameObject newTile = (GameObject)Object.Instantiate (terrainPrefab);
-
-							newTile.name = getTerrainName(x,y);
-
-							if(terrainMap.ContainsKey(newTile.name))
-							{
-								terrainMap.Remove(newTile.name);
-							}
-							terrainMap.Add(newTile.name, new TerrainTile(new Vector2(x,y), newTile));
-
-							newTile.transform.position = new Vector3 ((x - 250) * (size), 100, (y - 250) * (size));
-
-							newTile.AddComponent(typeof(Terrain));
-							Terrain terrain = (Terrain)newTile.GetComponent(typeof(Terrain));
-
-							newTile.AddComponent(typeof(TerrainCollider));
-							TerrainCollider collider = (TerrainCollider)newTile.GetComponent(typeof(TerrainCollider));
-							
-							TerrainData terrainData = new TerrainData();
-							
-							terrain.terrainData = terrainData;
-							collider.terrainData = terrainData;
-
-							terrainData.heightmapResolution = (int)size/2 + 1;
-							terrainData.size = dataSize;
-							
-							generateTerrainTexture(terrainData);
-							
-							//Wait in case the heightmap hasn't been generated.
-							while(heights == null)
-							{
-							}
-
-							terrainData.SetHeights(0,0,heights);
-							
-							break;
-						}
+						terrainData.SetHeights(0,0,heights);
+						updateCount++;
+						break;
 					}
 				}
 			}
@@ -132,14 +138,14 @@ public class ExpandTerrain : MonoBehaviour
 	
 	private float[,] generateHeightMap(int tileX, int tileY)
 	{
-		int nRows = (int)size/2 + 1;
-		int nCols = (int)size/2 + 1;
+		int nRows = heightMapResolution;
+		int nCols = heightMapResolution;
 		float[,] heights = new float[nRows, nCols];
 		for(int hx = 0; hx < nRows; hx++)
 		{
 			for(int hy = 0; hy < nCols; hy++)
 			{
-				float height = (Noise.Generate((hx + ((nRows - 1) * (tileY))) / 1000f, (hy + ((nCols - 1) * (tileX))) / 1000f))/2 + 0.5f;
+				float height = (Noise.Generate((hx + ((nRows - 1) * (tileY) )) / 1000f, (hy + ((nCols - 1) * (tileX))) / 1000f))/2 + 0.5f;
 				heights[hx,hy] = height;
 			}
 		}
@@ -167,8 +173,8 @@ public class ExpandTerrain : MonoBehaviour
 	public Vector2 getGridCoordinate(Vector3 position){
 		Vector2 coordinate = new Vector2 ();
 		
-		coordinate.x = Mathf.FloorToInt (position.x / size) + 250;
-		coordinate.y = Mathf.FloorToInt (position.z / size) + 250;
+		coordinate.x = Mathf.FloorToInt (position.x / (size)) + 250;
+		coordinate.y = Mathf.FloorToInt (position.z / (size)) + 250;
 		
 		return coordinate;
 	}
