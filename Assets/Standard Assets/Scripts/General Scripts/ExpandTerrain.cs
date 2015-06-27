@@ -23,6 +23,8 @@ public class ExpandTerrain : MonoBehaviour
 	private Vector2 currentCoordinate;
 	private float size;
 	private Vector3 dataSize;
+	
+	private int updateCount = 0;
 
 	public delegate void CoordChange (Vector2 newCoord, ExpandTerrain source);
 	public static event CoordChange OnCoordChange;
@@ -41,8 +43,13 @@ public class ExpandTerrain : MonoBehaviour
 		//We want to populate the surrounding X chunks around the player
 		//First, we find the XY coordinate of the player
 		Vector2 coordinate = getGridCoordinate (gameObject.transform.position);
-
-		if ((coordinate.x != currentCoordinate.x | coordinate.y != currentCoordinate.y)) {
+		updateCount++;
+		if(updateCount > 5)
+		{
+		updateCount = 0;
+		}
+		
+		if (updateCount == 0) {
 			Debug.Log("Grid Coordinate: [" + coordinate.x + "," + coordinate.y + "]" );
 			currentCoordinate = coordinate;
 			CoordChangeEvent(currentCoordinate);
@@ -81,7 +88,7 @@ public class ExpandTerrain : MonoBehaviour
 							}
 							terrainMap.Add(newTile.name, new TerrainTile(new Vector2(x,y), newTile));
 
-							newTile.transform.position = new Vector3 ((x - 250) * (size), 0, (y - 250) * (size));
+							newTile.transform.position = new Vector3 ((x - 250) * (size), 100, (y - 250) * (size));
 
 							newTile.AddComponent(typeof(Terrain));
 							Terrain terrain = (Terrain)newTile.GetComponent(typeof(Terrain));
@@ -97,19 +104,32 @@ public class ExpandTerrain : MonoBehaviour
 							terrainData.heightmapResolution = (int)size/2 + 1;
 							terrainData.size = dataSize;
 							
+							generateTerrainTexture(terrainData);
+							
 							//Wait in case the heightmap hasn't been generated.
 							while(heights == null)
 							{
 							}
 
 							terrainData.SetHeights(0,0,heights);
+							
+							break;
 						}
 					}
 				}
 			}
 		}
 	}
-
+	
+	private void generateTerrainTexture(TerrainData data)
+	{
+		SplatPrototype[] texture = new SplatPrototype[1];
+		Texture2D load = (Texture2D)Resources.Load("Grass (Hill)"); 
+		texture[0] = new SplatPrototype();
+		texture[0].texture = load;
+		data.splatPrototypes = texture;
+	}
+	
 	private float[,] generateHeightMap(int tileX, int tileY)
 	{
 		int nRows = (int)size/2 + 1;
@@ -119,7 +139,7 @@ public class ExpandTerrain : MonoBehaviour
 		{
 			for(int hy = 0; hy < nCols; hy++)
 			{
-				float height = (Noise.Generate((hx + ((nRows - 1) * (tileY))) / 1000f, (hy + ((nCols - 1) * (tileX))) / 1000f))/2 + 0.2f;
+				float height = (Noise.Generate((hx + ((nRows - 1) * (tileY))) / 1000f, (hy + ((nCols - 1) * (tileX))) / 1000f))/2 + 0.5f;
 				heights[hx,hy] = height;
 			}
 		}

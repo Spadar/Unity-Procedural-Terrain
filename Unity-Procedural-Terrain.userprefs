@@ -1,9 +1,8 @@
 ﻿<Properties>
-  <MonoDevelop.Ide.Workspace />
-  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\Standard Assets\Scripts\General Scripts\RemoveTerrain.cs">
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" PreferredExecutionTarget="MonoDevelop.Default" />
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\Standard Assets\Scripts\General Scripts\ExpandTerrain.cs">
     <Files>
-      <File FileName="Assets\Standard Assets\Scripts\General Scripts\ExpandTerrain.cs" Line="47" Column="53" />
-      <File FileName="Assets\Standard Assets\Scripts\General Scripts\RemoveTerrain.cs" Line="1" Column="1" />
+      <File FileName="Assets\Standard Assets\Scripts\General Scripts\ExpandTerrain.cs" Line="142" Column="124" />
     </Files>
   </MonoDevelop.Ide.Workbench>
   <MonoDevelop.Ide.DebuggingService.Breakpoints>
