@@ -1,0 +1,15 @@
+﻿<Properties>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\CustomScripts\TerrainLoader.cs">
+    <Files>
+      <File FileName="Assets\CustomScripts\TerrainLoader.cs" Line="243" Column="64" />
+      <File FileName="Assets\CustomScripts\Test.cs" Line="1" Column="1" />
+    </Files>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore>
+      <Breakpoint file="A:\GitHub\Unity-Procedural-Terrain\Assets\CustomScripts\TerrainLoader.cs" line="367" />
+    </BreakpointStore>
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+</Properties>

@@ -10,25 +10,75 @@ public class TerrainLoader : MonoBehaviour
 {
 	protected class TerrainTile
 	{
+		public string tileName;
 		public Vector2 position;
 		public int dist;
 		public GameObject terrain;
-		public TerrainTile(Vector2 position, int dist, GameObject terrain)
+		public float[,] heightMap;
+		public float[,,] splatData;
+		public TerrainTile(Vector2 position, string tileName, int dist, float[,] heightMap, float[,,] splatData, GameObject terrain)
 		{
 			this.position = position;
 			this.terrain = terrain;
 			this.dist = dist;
+			this.heightMap = heightMap;
+			this.tileName = tileName;
+			this.splatData = splatData;
+		}
+		
+		public float getHeight(int x, int y)
+		{
+			if(heightMap != null)
+			{
+				return heightMap[x,y];
+			}
+			else
+			{
+				return 0f;
+			}
+		}
+		
+		public float getSteepness(int x, int y)
+		{
+			float maxSteepness = 0;
+			
+			float centralHeight = getHeight(x,y);
+			
+			//Loop through all the neighboring heights
+			for(int xI = -1; xI <= 1; xI++)
+			{
+				for(int yI = -1; yI <= 1; yI++)
+				{
+					int sampleX = x + xI;
+					int sampleY = y + yI;
+					//Don't attempt to sample if we're outside the bounds of the array.
+					if(sampleX >= 0 && sampleX <= Mathf.Sqrt(heightMap.Length) - 1)
+					{
+						if(sampleY >= 0 && sampleY <= Mathf.Sqrt(heightMap.Length) - 1)
+						{
+							float steepness = Mathf.Abs(centralHeight - getHeight(sampleX, sampleY));
+							if(maxSteepness < steepness)
+							{
+								maxSteepness = steepness;
+							}
+						}
+					}
+				}
+			}
+			
+			return maxSteepness;
 		}
 	}
+	
 	public int renderDistance;
 	
 	public int heightMapResolution;
+	public int alphaMapResolution;
 	
 	public int tileSize;
 	public int ceilingHeight;
 	
 	public int noiseScale;
-	
 	public int seed;
 	
 	private Vector2 currentCoordinate;
@@ -37,10 +87,19 @@ public class TerrainLoader : MonoBehaviour
 	
 	private int updateCount = 0;
 	
+	private int alphaLayers = 4;
+	
 	public delegate void CoordChange (Vector2 newCoord, TerrainLoader source);
 	public static event CoordChange OnCoordChange;
 	
 	private Dictionary<string, TerrainTile> terrainMap = new Dictionary<string, TerrainTile>();
+	
+	private Dictionary<string, TerrainTile> pendingTerrain = new Dictionary<string, TerrainTile>();
+	
+	int threadCount = 0;
+	
+	private float maxHeight = 0;
+	private float maxSteepness = 0;
 	
 	IModule module;
 	
@@ -48,7 +107,6 @@ public class TerrainLoader : MonoBehaviour
 	void Start () {
 		dataSize = new Vector3 (tileSize, ceilingHeight, tileSize);
 		size = dataSize.x;
-		
 		
 		FastNoise fastPlanetContinents = new FastNoise(seed);
 		fastPlanetContinents.Frequency = 1.5;
@@ -95,7 +153,7 @@ public class TerrainLoader : MonoBehaviour
 		//First, we find the XY coordinate of the player
 		Vector2 coordinate = getGridCoordinate (gameObject.transform.position);
 		updateCount++;
-		if(updateCount > 5)
+		if(updateCount > 0)
 		{
 			updateCount = 0;
 		}
@@ -113,17 +171,24 @@ public class TerrainLoader : MonoBehaviour
 			{
 				Vector2 terrainCoord = new Vector2(x,y);
 				
-				bool existsInMap = terrainMap.ContainsKey(getTerrainName(x,y));
+				string tileName = getTerrainName(x,y);
+				
+				bool existsInMap = terrainMap.ContainsKey(tileName);
 				bool isNull = true;
 				
 				if(existsInMap)
 				{
-					isNull = terrainMap[getTerrainName(x,y)].terrain == null;
+					isNull = terrainMap[tileName].terrain == null;
+					if(isNull)
+					{
+						//Remove the null terrain from the terrain map
+						terrainMap.Remove(tileName);
+					}
 				}
 				
 				if((!existsInMap || isNull) && getGridDistance(terrainCoord,coordinate) <= renderDistance)
 				{
-					surroundingTerrain.Add(new TerrainTile(terrainCoord, getGridDistance(terrainCoord, currentCoordinate), null));
+					surroundingTerrain.Add(new TerrainTile(terrainCoord, tileName, getGridDistance(terrainCoord, currentCoordinate), null, null, null));
 				}
 			}
 		}
@@ -133,42 +198,56 @@ public class TerrainLoader : MonoBehaviour
 		
 		foreach(TerrainTile tile in orderedTerrain)
 		{
-			if(updateCount == 0)
+			if(updateCount == 0 || true)
 			{
 				//Generate the height map for the terrain in parallel
-				float[,] heights = null;
-				heights = generateComplexHeightMap((int)tile.position.x,(int)tile.position.y);
-				
-				GameObject newTile = new GameObject();
-				
-				newTile.name = getTerrainName((int)tile.position.x,(int)tile.position.y);
-				
-				if(terrainMap.ContainsKey(newTile.name))
+				if(!pendingTerrain.ContainsKey(tile.tileName) && !terrainMap.ContainsKey(tile.tileName))
 				{
-					terrainMap.Remove(newTile.name);
+					tryGenerateComplexHeightMap((int)tile.position.x,(int)tile.position.y, tile);
 				}
-				terrainMap.Add(newTile.name, new TerrainTile(tile.position, tile.dist, newTile));
-				
-				newTile.transform.position = new Vector3 (((int)tile.position.x - 250) * (size), 250, ((int)tile.position.y - 250) * (size));
-				
-				newTile.AddComponent(typeof(Terrain));
-				Terrain terrain = (Terrain)newTile.GetComponent(typeof(Terrain));
-				
-				newTile.AddComponent(typeof(TerrainCollider));
-				TerrainCollider collider = (TerrainCollider)newTile.GetComponent(typeof(TerrainCollider));
-				
-				TerrainData terrainData = new TerrainData();
-				
-				terrain.terrainData = terrainData;
-				collider.terrainData = terrainData;
-				
-				terrainData.heightmapResolution = heightMapResolution;
-				terrainData.size = dataSize;
-				
-				generateTerrainTexture(terrainData);
-				
-				terrainData.SetHeights(0,0,heights);
-				updateCount++;
+				else if(pendingTerrain.ContainsKey(tile.tileName))
+				{
+						TerrainTile processedTile = pendingTerrain[tile.tileName];
+						if(processedTile.heightMap != null && processedTile.splatData != null)
+						{							
+							GameObject newTile = new GameObject();
+							
+							newTile.name = tile.tileName;
+							
+							terrainMap.Add(tile.tileName, new TerrainTile(tile.position, tile.tileName, tile.dist, processedTile.heightMap, processedTile.splatData, newTile));
+							pendingTerrain.Remove(tile.tileName);
+							
+							newTile.transform.position = new Vector3 (((int)tile.position.x - 250) * (size), 0, ((int)tile.position.y - 250) * (size));
+							
+							newTile.AddComponent(typeof(Terrain));
+							Terrain terrain = (Terrain)newTile.GetComponent(typeof(Terrain));
+							
+							newTile.AddComponent(typeof(TerrainCollider));
+							TerrainCollider collider = (TerrainCollider)newTile.GetComponent(typeof(TerrainCollider));
+							
+							TerrainData terrainData = new TerrainData();
+							
+							terrain.terrainData = terrainData;
+							collider.terrainData = terrainData;
+							
+							terrainData.heightmapResolution = heightMapResolution;
+							terrainData.size = dataSize;
+							
+							
+							terrainData.alphamapResolution = alphaMapResolution;
+							
+							generateTerrainTexture(terrainData);
+														
+							terrainData.SetHeights(0,0,processedTile.heightMap);
+							
+							terrainData.SetAlphamaps(0, 0, processedTile.splatData);					
+							break;
+						}
+				}
+			}
+			updateCount++;
+			if(updateCount > 3)
+			{
 				break;
 			}
 		}
@@ -176,28 +255,166 @@ public class TerrainLoader : MonoBehaviour
 	
 	private void generateTerrainTexture(TerrainData data)
 	{
-		SplatPrototype[] texture = new SplatPrototype[1];
-		Texture2D load = (Texture2D)Resources.Load("GrassHillAlbedo"); 
+		SplatPrototype[] texture = new SplatPrototype[4];
+		Texture2D sand = (Texture2D)Resources.Load("SandAlbedo"); 
 		texture[0] = new SplatPrototype();
-		texture[0].texture = load;
+		texture[0].texture = sand;
+		
+		Texture2D grass = (Texture2D)Resources.Load("GrassHillAlbedo"); 
+		texture[1] = new SplatPrototype();
+		texture[1].texture = grass;
+		
+		Texture2D rockygrass = (Texture2D)Resources.Load("GrassRockyAlbedo"); 
+		texture[2] = new SplatPrototype();
+		texture[2].texture = rockygrass;
+		
+		Texture2D rockycliff = (Texture2D)Resources.Load("CliffAlbedoSpecular"); 
+		texture[3] = new SplatPrototype();
+		texture[3].texture = rockycliff;
+		
 		data.splatPrototypes = texture;
 	}
 	
-	private float[,] generateComplexHeightMap(int tileX, int tileY)
+	private float[,,] generateSplatMap(TerrainTile tile)
 	{
-		int nRows = heightMapResolution;
-		int nCols = heightMapResolution;
-		float[,] heights = new float[nRows, nCols];
+		// Splatmap data is stored internally as a 3d array of floats, so declare a new empty array ready for your custom splatmap data:
+		float[, ,] splatmapData = new float[alphaMapResolution, alphaMapResolution, alphaLayers];
 		
-		for (int y = 0; y < nCols; y++)
+		for (int y = 0; y < alphaMapResolution; y++)
 		{
-			for (int x = 0; x < nRows; x++)
+			for (int x = 0; x < alphaMapResolution; x++)
 			{
-				heights[x,y] = (float)((module.GetValue(((double)x + (((double)nRows - 1) * ((double)tileY))) / (double)noiseScale,((double)y + (((double)nCols - 1) * ((double)tileX))) / (double)noiseScale, 10)/1.5)/2.0 + 0.5);
+				// Normalise x/y coordinates to range 0-1 
+				float y_01 = (float)y/(float)alphaMapResolution;
+				float x_01 = (float)x/(float)alphaMapResolution;
+				
+				int equivX = Mathf.RoundToInt(x_01 * heightMapResolution);
+				int equivY = Mathf.RoundToInt(y_01 * heightMapResolution);
+				
+				// Sample the height at this location (note GetHeight expects int coordinates corresponding to locations in the heightmap array)
+				float height = tile.getHeight(equivX,equivY);
+				
+				if(height > maxHeight)
+				{
+					maxHeight = height;
+				}
+				
+				// Calculate the normal of the terrain (note this is in normalised coordinates relative to the overall terrain dimensions)
+				//Vector3 normal = terrainData.GetInterpolatedNormal(y_01,x_01);
+				
+				// Calculate the steepness of the terrain
+				float steepness = tile.getSteepness(equivX, equivY);
+				
+				if(steepness > maxSteepness)
+				{
+					maxSteepness = steepness;
+				}
+				
+				// Setup an array to record the mix of texture weights at this point
+				float[] splatWeights = new float[alphaLayers];
+				
+				// CHANGE THE RULES BELOW TO SET THE WEIGHTS OF EACH TEXTURE ON WHATEVER RULES YOU WANT
+				
+				float cliffThreshhold = 0.009f;
+				
+				//Sand
+				splatWeights[0] = ((1f - height) - 0.75f) - steepness*3f;
+				
+				if(splatWeights[0] < 0)
+				{
+					splatWeights[0] = 0;
+				}
+				
+				if(height < 0.2 && steepness < cliffThreshhold)
+				{
+					//splatWeights[0] = 1f;
+				}
+				
+				//Grass
+				splatWeights[1] = (height - 0.1f) - steepness*3f;
+				
+				if(splatWeights[1] < 0)
+				{
+					splatWeights[1] = 0;
+				}
+				
+				if(height > 0.2 && height < 0.4 && steepness < cliffThreshhold)
+				{
+					//splatWeights[1] = 1f;
+				}
+				
+				//RockyGrass
+				splatWeights[2] = (height - 0.5f) - steepness*3f;
+				
+				if(splatWeights[2] < 0)
+				{
+					splatWeights[2] = 0;
+				}
+				
+				if(height > 0.4 && steepness < cliffThreshhold)
+				{
+					//splatWeights[2] = 1f;
+				}
+				
+				//Cliff
+				splatWeights[3] = 0f;
+				
+				if(steepness >= cliffThreshhold)
+				{
+					splatWeights[3] = steepness*10f;
+				}
+				
+				float weightSum = splatWeights.Sum();
+				
+				// Loop through each terrain texture
+				for(int i = 0; i<alphaLayers; i++){
+					// Assign this point to the splatmap array
+					splatmapData[x, y, i] = splatWeights[i]/weightSum;
+				}
 			}
 		}
 		
-		return heights;
+		return splatmapData;
+	}
+	
+	private void tryGenerateComplexHeightMap(int tileX, int tileY, TerrainTile tile)
+	{
+		if(threadCount < 15)
+		{
+			try
+			{
+				Interlocked.Add(ref threadCount, 1);
+				Thread heightmapThread = new Thread(() =>
+				                                    {
+					pendingTerrain.Add(tile.tileName, new TerrainTile(tile.position, tile.tileName, tile.dist, null, null, null));
+					int nRows = heightMapResolution;
+					int nCols = heightMapResolution;
+					float[,] heights = new float[nRows, nCols];
+					
+					for (int y = 0; y < nCols; y++)
+					{
+						for (int x = 0; x < nRows; x++)
+						{
+							heights[x,y] = (float)((module.GetValue(((double)x + (((double)nRows - 1) * ((double)tileY))) / (double)noiseScale,((double)y + (((double)nCols - 1) * ((double)tileX))) / (double)noiseScale, 10)/1.5) + 0.07);
+						}
+					}
+					
+					TerrainTile partialTile = new TerrainTile(tile.position, tile.tileName, tile.dist, heights, null, null);
+					
+					partialTile.splatData = generateSplatMap(partialTile);
+					
+					pendingTerrain[tile.tileName] = partialTile;
+					
+					Interlocked.Add(ref threadCount, -1);
+				});
+				
+				heightmapThread.Start();
+			}
+			catch(UnityException)
+			{
+				Interlocked.Add(ref threadCount, -1);
+			}
+		}
 	}
 	
 	private void cullTerrain()

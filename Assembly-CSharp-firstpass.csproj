@@ -5,7 +5,7 @@
 	<Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
 	<ProductVersion>10.0.20506</ProductVersion>
 	<SchemaVersion>2.0</SchemaVersion>
-	<ProjectGuid>{97F855A0-759A-0397-38C2-B82D7F420A0D}</ProjectGuid>
+	<ProjectGuid>{25F04F46-5785-DEE4-4518-C4EB6BCD911B}</ProjectGuid>
 	<OutputType>Library</OutputType>
 	<AppDesignerFolder>Properties</AppDesignerFolder>
 	<RootNamespace></RootNamespace>
@@ -279,7 +279,7 @@
  <HintPath>C:/Program Files/Unity/Editor/Data/UnityExtensions/Unity/UnityAnalytics/UnityEngine.Analytics.dll</HintPath>
  </Reference>
  <Reference Include="LibNoise">
- <HintPath>A:/GitHub/Procedurally Generated Terrain New/Assets/LibNoise.dll</HintPath>
+ <HintPath>A:/GitHub/Unity-Procedural-Terrain/Assets/LibNoise.dll</HintPath>
  </Reference>
  <Reference Include="UnityEditor.iOS.Extensions.Xcode">
  <HintPath>C:/Program Files/Unity/Editor/Data/PlaybackEngines/iOSSupport/UnityEditor.iOS.Extensions.Xcode.dll</HintPath>
