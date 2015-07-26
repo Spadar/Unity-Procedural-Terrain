@@ -36,10 +36,6 @@ public class TerrainLoader : MonoBehaviour
 	public delegate void CoordChange (Vector2 newCoord, TerrainLoader source);
 	public static event CoordChange OnCoordChange;
 	
-	private Dictionary<string, TerrainTile> terrainMap = new Dictionary<string, TerrainTile>();
-	
-	private Dictionary<string, TerrainTile> pendingTerrain = new Dictionary<string, TerrainTile>();
-	
 	int threadCount = 0;
 	
 	private float maxHeight = 0;
@@ -53,18 +49,18 @@ public class TerrainLoader : MonoBehaviour
 		dataSize = new Vector3 (tileSize, ceilingHeight, tileSize);
 		size = dataSize.x;
 		
-		TerrainTile.alphaMapResolution = alphaMapResolution;
-		TerrainTile.heightMapResolution = heightMapResolution;
+		WorldTerrain.alphaMapResolution = alphaMapResolution;
+		WorldTerrain.heightMapResolution = heightMapResolution;
 		
-		TerrainTile.dataSize = dataSize;
-		TerrainTile.size = size;
-		TerrainTile.tileSize = tileSize;
-		TerrainTile.ceilingHeight = ceilingHeight;
+		WorldTerrain.dataSize = dataSize;
+		WorldTerrain.size = size;
+		WorldTerrain.tileSize = tileSize;
+		WorldTerrain.ceilingHeight = ceilingHeight;
 		
-		TerrainTile.noiseScale = noiseScale;
-		TerrainTile.seed = seed;
-		TerrainTile.waterPrefab = waterPrefab;
-		TerrainTile.sea_level = sea_level;
+		WorldTerrain.noiseScale = noiseScale;
+		WorldTerrain.seed = seed;
+		WorldTerrain.waterPrefab = waterPrefab;
+		WorldTerrain.sea_level = sea_level;
 		
 		WorldGenerator test = new WorldGenerator();
 		
@@ -78,18 +74,34 @@ public class TerrainLoader : MonoBehaviour
 	{
 		float altitude = gameObject.transform.position.y;
 		
-		Debug.Log("Player Altitude: " + (altitude/ceilingHeight));
+		//Debug.Log("Player Altitude: " + (altitude/ceilingHeight));
 		
 		//We want to populate the surrounding X chunks around the player
 		//First, we find the XY coordinate of the player
-		Vector2 coordinate = TerrainTile.getGridCoordinate(gameObject.transform.position);
+		Vector2 coordinate = WorldTerrain.getGridCoordinate(gameObject.transform.position);
 
 		currentCoordinate = coordinate;
 		CoordChangeEvent(currentCoordinate);
 		
 		TerrainTile currentTile;
+				
+		WorldTerrain.terrainMap.TryGetValue(WorldTerrain.getTerrainName((int)coordinate.x, (int)coordinate.y), out currentTile);
 		
-		terrainMap.TryGetValue(TerrainTile.getTerrainName((int)coordinate.x, (int)coordinate.y), out currentTile);
+		if(currentTile != null)
+		{
+			WorldTerrain.LocalCoordinate coord = WorldTerrain.WorldToLocal(gameObject.transform.position, WorldTerrain.heightMapResolution);
+			
+			float playerSteepness = currentTile.getSteepness((int)coord.localCoordinate.x, (int)coord.localCoordinate.y);
+			
+			Debug.Log("Player Terrain Steepness: " + playerSteepness + ". Max found = " + maxSteepness);
+			
+			if(maxSteepness < playerSteepness)
+			{
+				maxSteepness = playerSteepness;
+			}
+			
+			//currentTile.setHeight((int)coord.localCoordinate.x, (int)coord.localCoordinate.y, currentTile.getHeight((int)coord.localCoordinate.x, (int)coord.localCoordinate.y) + 0.01f);
+		}
 		
 		cullTerrain();
 		
@@ -101,24 +113,24 @@ public class TerrainLoader : MonoBehaviour
 			{
 				Vector2 terrainCoord = new Vector2(x,y);
 				
-				string tileName = TerrainTile.getTerrainName(x,y);
+				string tileName = WorldTerrain.getTerrainName(x,y);
 				
-				bool existsInMap = terrainMap.ContainsKey(tileName);
+				bool existsInMap = WorldTerrain.terrainMap.ContainsKey(tileName);
 				bool isNull = true;
 				
 				if(existsInMap)
 				{
-					isNull = !terrainMap[tileName].isLoaded;
+					isNull = !WorldTerrain.terrainMap[tileName].isLoaded;
 					if(isNull)
 					{
 						//Remove the null terrain from the terrain map
-						terrainMap.Remove(tileName);
+						WorldTerrain.terrainMap.Remove(tileName);
 					}
 				}
 				
-				if((!existsInMap || isNull) && !pendingTerrain.ContainsKey(tileName) && TerrainTile.getGridDistance(terrainCoord,coordinate) <= renderDistance)
+				if((!existsInMap || isNull) && !WorldTerrain.pendingTerrain.ContainsKey(tileName) && WorldTerrain.getGridDistance(terrainCoord,coordinate) <= renderDistance)
 				{
-					surroundingTerrain.Add(new TerrainTile(terrainCoord, tileName, TerrainTile.getGridDistance(terrainCoord, currentCoordinate), null, null, null));
+					surroundingTerrain.Add(new TerrainTile(terrainCoord, tileName, WorldTerrain.getGridDistance(terrainCoord, currentCoordinate), null, null, null));
 				}
 			}
 		}
@@ -128,11 +140,11 @@ public class TerrainLoader : MonoBehaviour
 		
 		foreach(TerrainTile tile in orderedTerrain)
 		{
-			if(!pendingTerrain.ContainsKey(tile.tileName) && !terrainMap.ContainsKey(tile.tileName))
+			if(!WorldTerrain.pendingTerrain.ContainsKey(tile.tileName) && !WorldTerrain.terrainMap.ContainsKey(tile.tileName))
 			{				
 				if(threadCount < maxRenderThreads)
 				{
-					pendingTerrain.Add(tile.tileName, tile);
+					WorldTerrain.pendingTerrain.Add(tile.tileName, tile);
 					tile.isLoading = true;
 					startGenerateThread(tile);
 				}
@@ -141,11 +153,11 @@ public class TerrainLoader : MonoBehaviour
 		
 		
 		List<TerrainTile> loadedTiles = new List<TerrainTile>();
-		for(int i = 0; i < pendingTerrain.Values.Count; i++)
+		for(int i = 0; i < WorldTerrain.pendingTerrain.Values.Count; i++)
 		//foreach(TerrainTile tile in pendingTerrain.Values)
 		{
-			TerrainTile tile = pendingTerrain.Values.ToArray()[i];
-			if(TerrainTile.getGridDistance(tile.position, currentCoordinate) < renderDistance)
+			TerrainTile tile = WorldTerrain.pendingTerrain.Values.ToArray()[i];
+			if(WorldTerrain.getGridDistance(tile.position, currentCoordinate) < renderDistance)
 			{
 				if(!tile.isLoading)
 				{
@@ -159,18 +171,18 @@ public class TerrainLoader : MonoBehaviour
 				{
 					tile.load();
 					loadedTiles.Add(tile);
-					terrainMap.Add(tile.tileName, tile);
+					WorldTerrain.terrainMap.Add(tile.tileName, tile);
 				}
 			}
 			else
 			{
-				pendingTerrain.Remove(tile.tileName);
+				WorldTerrain.pendingTerrain.Remove(tile.tileName);
 			}
 		}
 		
 		foreach(TerrainTile tile in loadedTiles)
 		{
-			pendingTerrain.Remove(tile.tileName);
+			WorldTerrain.pendingTerrain.Remove(tile.tileName);
 		}
 	}
 	
@@ -202,9 +214,9 @@ public class TerrainLoader : MonoBehaviour
 	private void cullTerrain()
 	{
 		List<TerrainTile> removed = new List<TerrainTile>();
-		foreach (TerrainTile tile in terrainMap.Values) 
+		foreach (TerrainTile tile in WorldTerrain.terrainMap.Values) 
 		{
-			if(TerrainTile.getGridDistance(tile.position, currentCoordinate) > renderDistance)
+			if(WorldTerrain.getGridDistance(tile.position, currentCoordinate) > renderDistance)
 			{
 				tile.unload();
 				Resources.UnloadUnusedAssets();
@@ -214,7 +226,7 @@ public class TerrainLoader : MonoBehaviour
 		
 		foreach(TerrainTile tile in removed)
 		{
-			terrainMap.Remove(TerrainTile.getTerrainName((int)tile.position.x, (int)tile.position.y));
+			WorldTerrain.terrainMap.Remove(WorldTerrain.getTerrainName((int)tile.position.x, (int)tile.position.y));
 		}
 	}
 	

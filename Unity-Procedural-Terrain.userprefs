@@ -1,17 +1,19 @@
 ﻿<Properties>
-  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
-  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\CustomScripts\TerrainTile.cs">
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" PreferredExecutionTarget="MonoDevelop.Default" />
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\CustomScripts\WorldTerrain.cs">
     <Files>
-      <File FileName="Assets\CustomScripts\WorldGenerator.cs" Line="314" Column="36" />
-      <File FileName="Assets\CustomScripts\TerrainTile.cs" Line="124" Column="4" />
-      <File FileName="Assets\CustomScripts\TerrainLoader.cs" Line="81" Column="61" />
+      <File FileName="Assets\CustomScripts\TerrainTile.cs" Line="441" Column="1" />
+      <File FileName="Assets\CustomScripts\WorldGenerator.cs" Line="261" Column="30" />
+      <File FileName="Assets\CustomScripts\TerrainLoader.cs" Line="96" Column="81" />
+      <File FileName="Assets\CustomScripts\WorldTerrain.cs" Line="76" Column="42" />
+      <File FileName="Assets\CustomScripts\SplatMapComparator.cs" Line="46" Column="25" />
     </Files>
     <Pads>
       <Pad Id="ProjectPad">
         <State expanded="True">
           <Node name="Assembly-CSharp" expanded="True">
             <Node name="CustomScripts" expanded="True">
-              <Node name="TerrainTile.cs" selected="True" />
+              <Node name="WorldTerrain.cs" selected="True" />
             </Node>
             <Node name="libNoise" expanded="True">
               <Node name="Operator" expanded="True" />
@@ -26,13 +28,18 @@
         <State>
           <Value>processedTile.position</Value>
           <Value>this.terrainMap</Value>
+          <Value>weight</Value>
+          <Value>steepness</Value>
         </State>
       </Pad>
     </Pads>
   </MonoDevelop.Ide.Workbench>
   <MonoDevelop.Ide.DebuggingService.Breakpoints>
     <BreakpointStore>
-      <Breakpoint file="A:\GitHub\Unity-Procedural-Terrain\Assets\CustomScripts\TerrainLoader.cs" line="115" />
+      <Breakpoint file="A:\GitHub\Unity-Procedural-Terrain\Assets\CustomScripts\TerrainLoader.cs" line="127" />
+      <Breakpoint file="A:\GitHub\Unity-Procedural-Terrain\Assets\CustomScripts\TerrainTile.cs" line="312" />
+      <Breakpoint file="A:\GitHub\Unity-Procedural-Terrain\Assets\CustomScripts\TerrainTile.cs" line="441" />
+      <Breakpoint file="A:\GitHub\Unity-Procedural-Terrain\Assets\CustomScripts\TerrainTile.cs" line="447" />
     </BreakpointStore>
   </MonoDevelop.Ide.DebuggingService.Breakpoints>
   <MonoDevelop.Ide.DebuggingService.PinnedWatches />

@@ -19,18 +19,6 @@ namespace AssemblyCSharp
 	public class TerrainTile
 	{
 		public static LibNoise.ModuleBase module;
-	
-		public static int heightMapResolution;
-		public static int alphaMapResolution;
-		public static int tileSize;
-		public static int ceilingHeight;
-		
-		public static int noiseScale;
-		public static int seed;
-		
-		public static Vector3 dataSize;
-		public static float size;
-	
 		public string tileName;
 		public Vector2 position;
 		public int dist;
@@ -40,25 +28,23 @@ namespace AssemblyCSharp
 		public float[,,] splatData;
 		
 		public GameObject water;
-		
-		public static GameObject waterPrefab;
-		
+				
 		private static double minAlt = 1.0;
 		private static double maxAlt = 0.0;
 		
 		private readonly int alphaLayers = 4;
-		
-		public static float sea_level = 0.3f;
-		
+				
 		private float minAltitude = 1.0f;
 		
 		public bool isLoading = false;
+		
+		public TerrainTile[] neighbors = new TerrainTile[4];
 		
 		public bool hasWater
 		{
 			get
 			{
-				if(minAltitude < sea_level)
+				if(minAltitude < WorldTerrain.sea_level)
 				{
 					return true;
 				}
@@ -99,6 +85,21 @@ namespace AssemblyCSharp
 			}
 		}
 		
+		public Terrain getTerrain
+		{
+			get
+			{
+				if(terrain != null)
+				{
+					return (Terrain)terrain.GetComponent(typeof(Terrain));
+				}
+				else
+				{
+					return null;
+				}
+			}
+		}
+		
 		public TerrainTile(Vector2 position, string tileName, int dist, float[,] heightMap, float[,,] splatData, GameObject terrain)
 		{
 			this.position = position;
@@ -111,7 +112,7 @@ namespace AssemblyCSharp
 		
 		public void setHeight(int x, int y, float value)
 		{
-			if(heightMap != null && (x < heightMapResolution && x >= 0) && (y < heightMapResolution && y >= 0))
+			if(heightMap != null && (x < WorldTerrain.heightMapResolution && x >= 0) && (y < WorldTerrain.heightMapResolution && y >= 0))
 			{
 				heightMap[x,y] = value;
 				
@@ -160,7 +161,10 @@ namespace AssemblyCSharp
 				}
 			}
 			
-			return maxSteepness;
+			//We want the same result regardless of the heightmap resolution or the size of the terrain tiles.
+			float normalizationFactor = WorldTerrain.size / (WorldTerrain.heightMapResolution - 1f);
+			
+			return maxSteepness / normalizationFactor;
 		}
 		
 		public void unload()
@@ -178,8 +182,8 @@ namespace AssemblyCSharp
 			
 			newTile.name = tileName;
 			
-			//newTile.transform.position = new Vector3 (((int)position.x - 250) * (size), 0, ((int)position.y - 250) * (size));
-			newTile.transform.position = new Vector3 (((int)position.x) * (size), 0, ((int)position.y) * (size));
+			//newTile.transform.position = new Vector3 (((int)position.x - 250) * (WorldTerrain.size), 0, ((int)position.y - 250) * (WorldTerrain.size));
+			newTile.transform.position = new Vector3 (((int)position.x) * (WorldTerrain.size), 0, ((int)position.y) * (WorldTerrain.size));
 			
 			
 			newTile.AddComponent(typeof(Terrain));
@@ -195,10 +199,10 @@ namespace AssemblyCSharp
 			terrain.terrainData = terrainData;
 			collider.terrainData = terrainData;
 			
-			terrainData.heightmapResolution = heightMapResolution;
-			terrainData.size = dataSize;
+			terrainData.heightmapResolution = WorldTerrain.heightMapResolution;
+			terrainData.size = WorldTerrain.dataSize;
 			
-			terrainData.alphamapResolution = alphaMapResolution;
+			terrainData.alphamapResolution = WorldTerrain.alphaMapResolution;
 			
 			generateTerrainTexture(terrainData);
 			
@@ -210,10 +214,12 @@ namespace AssemblyCSharp
 			
 			if(hasWater)
 			{
-				water = GameObject.Instantiate(waterPrefab);
-				water.transform.position = new Vector3(terrain.transform.position.x + tileSize/2, ceilingHeight*sea_level, terrain.transform.position.z + tileSize/2);
-				water.transform.localScale = new Vector3(tileSize/10.0f,tileSize/10.0f,tileSize/10.0f);
+				water = GameObject.Instantiate(WorldTerrain.waterPrefab);
+				water.transform.position = new Vector3(terrain.transform.position.x + WorldTerrain.tileSize/2, WorldTerrain.ceilingHeight*WorldTerrain.sea_level, terrain.transform.position.z + WorldTerrain.tileSize/2);
+				water.transform.localScale = new Vector3(WorldTerrain.tileSize/10.0f,WorldTerrain.tileSize/10.0f,WorldTerrain.tileSize/10.0f);
 			}
+			
+			setNeighbors();
 		}
 		
 		private void generateTerrainTexture(TerrainData data)
@@ -240,15 +246,15 @@ namespace AssemblyCSharp
 		
 		public void generateComplexHeightMap()
 		{
-			int nRows = heightMapResolution;
-			int nCols = heightMapResolution;
+			int nRows = WorldTerrain.heightMapResolution;
+			int nCols = WorldTerrain.heightMapResolution;
 			float[,] heights = new float[nRows, nCols];
 			
 			for (int y = 0; y < nCols; y++)
 			{
 				for (int x = 0; x < nRows; x++)
 				{
-					heights[x,y] = (float)((module.GetValue(((double)x + (((double)nRows - 1) * ((double)position.y))) / (double)noiseScale,((double)y + (((double)nCols - 1) * ((double)position.x))) / (double)noiseScale, 1)));
+					heights[x,y] = (float)((module.GetValue(((double)x + (((double)nRows - 1) * ((double)position.y))) / (double)WorldTerrain.noiseScale,((double)y + (((double)nCols - 1) * ((double)position.x))) / (double)WorldTerrain.noiseScale, 1)));
 					
 					if(heights[x,y] < minAltitude)
 					{
@@ -276,18 +282,18 @@ namespace AssemblyCSharp
 		public void generateDetailMap()
 		{
 			// Splatmap data is stored internally as a 3d array of floats, so declare a new empty array ready for your custom splatmap data:
-			float[, ,] splatmapData = new float[alphaMapResolution, alphaMapResolution, alphaLayers];
+			float[, ,] splatmapData = new float[WorldTerrain.alphaMapResolution, WorldTerrain.alphaMapResolution, alphaLayers];
 			
-			for (int y = 0; y < alphaMapResolution; y++)
+			for (int y = 0; y < WorldTerrain.alphaMapResolution; y++)
 			{
-				for (int x = 0; x < alphaMapResolution; x++)
+				for (int x = 0; x < WorldTerrain.alphaMapResolution; x++)
 				{
 					// Normalise x/y coordinates to range 0-1 
-					float y_01 = (float)y/(float)alphaMapResolution;
-					float x_01 = (float)x/(float)alphaMapResolution;
+					float y_01 = (float)y/(float)WorldTerrain.alphaMapResolution;
+					float x_01 = (float)x/(float)WorldTerrain.alphaMapResolution;
 					
-					int equivX = Mathf.RoundToInt(x_01 * heightMapResolution);
-					int equivY = Mathf.RoundToInt(y_01 * heightMapResolution);
+					int equivX = Mathf.RoundToInt(x_01 * WorldTerrain.heightMapResolution);
+					int equivY = Mathf.RoundToInt(y_01 * WorldTerrain.heightMapResolution);
 					
 					// Sample the height at this location (note GetHeight expects int coordinates corresponding to locations in the heightmap array)
 					float height = getHeight(equivX,equivY);
@@ -305,8 +311,19 @@ namespace AssemblyCSharp
 					
 					float cliffThreshhold = 0.009f;
 					
+					SplatMapComparator[] comparators = WorldTerrain.heightTextureComparators.Values.ToArray();
+					//Height weights
+					for(int i = 0; i >= comparators.Length; i++)
+					{
+						SplatMapComparator comparator = comparators[i];
+						
+						float weight = comparator.calculateValue(height);
+						splatWeights[i] = weight;
+					}
+					
+					/*
 					//Sand
-					splatWeights[0] = ((1f - height) - (1 - sea_level)) - steepness*3f;
+					splatWeights[0] = ((1f - height) - (1 - WorldTerrain.sea_level)) - steepness*3f;
 					
 					if(splatWeights[0] < 0)
 					{
@@ -319,7 +336,7 @@ namespace AssemblyCSharp
 					}
 					
 					//Grass
-					splatWeights[1] = (height - sea_level) - steepness*3f;
+					splatWeights[1] = (height - WorldTerrain.sea_level) - steepness*3f;
 					
 					if(splatWeights[1] < 0)
 					{
@@ -351,8 +368,10 @@ namespace AssemblyCSharp
 					{
 						splatWeights[3] = steepness*10f;
 					}
+					*/
 					
 					float weightSum = splatWeights.Sum();
+					
 					
 					// Loop through each terrain texture
 					for(int i = 0; i<alphaLayers; i++)
@@ -369,18 +388,20 @@ namespace AssemblyCSharp
 		public void generateSplatMap()
 		{
 			// Splatmap data is stored internally as a 3d array of floats, so declare a new empty array ready for your custom splatmap data:
-			float[, ,] splatmapData = new float[alphaMapResolution, alphaMapResolution, alphaLayers];
+			float[, ,] splatmapData = new float[WorldTerrain.alphaMapResolution, WorldTerrain.alphaMapResolution, alphaLayers];
 			
-			for (int y = 0; y < alphaMapResolution; y++)
+			
+			
+			for (int y = 0; y < WorldTerrain.alphaMapResolution; y++)
 			{
-				for (int x = 0; x < alphaMapResolution; x++)
+				for (int x = 0; x < WorldTerrain.alphaMapResolution; x++)
 				{
 					// Normalise x/y coordinates to range 0-1 
-					float y_01 = (float)y/(float)alphaMapResolution;
-					float x_01 = (float)x/(float)alphaMapResolution;
+					float y_01 = (float)y/(float)WorldTerrain.alphaMapResolution;
+					float x_01 = (float)x/(float)WorldTerrain.alphaMapResolution;
 					
-					int equivX = Mathf.RoundToInt(x_01 * heightMapResolution);
-					int equivY = Mathf.RoundToInt(y_01 * heightMapResolution);
+					int equivX = Mathf.RoundToInt(x_01 * WorldTerrain.heightMapResolution);
+					int equivY = Mathf.RoundToInt(y_01 * WorldTerrain.heightMapResolution);
 					
 					// Sample the height at this location (note GetHeight expects int coordinates corresponding to locations in the heightmap array)
 					float height = getHeight(equivX,equivY);
@@ -398,8 +419,41 @@ namespace AssemblyCSharp
 					
 					float cliffThreshhold = 0.009f;
 					
+					SplatMapComparator[] heightComparators = WorldTerrain.heightTextureComparators.Values.ToArray();
+					//Height weights
+					for(int i = 0; i < heightComparators.Length; i++)
+					{
+						SplatMapComparator comparator = heightComparators[i];
+						
+						float weight = comparator.calculateValue(height);
+						splatWeights[i] = weight;
+					}
+					
+					SplatMapComparator[] steepnessComparators = WorldTerrain.steepnessTextureComparators.Values.ToArray();
+					//Height weights
+					for(int i = 0; i < steepnessComparators.Length; i++)
+					{
+						SplatMapComparator comparator = steepnessComparators[i];
+						
+						float weight = comparator.calculateValue(steepness);
+						if(WorldTerrain.steepnessTextureComparators["cliff"] != comparator)
+						{
+							splatWeights[i] = splatWeights[i] - weight;
+						}
+						else
+						{
+							if(splatWeights[i] < weight)
+							{
+								splatWeights[i] = weight;
+							}
+						}
+					}
+					
+					
+					
+					/*
 					//Sand
-					splatWeights[0] = ((1f - height) - (1-sea_level*3)) - steepness*3f;
+					splatWeights[0] = ((1f - height) - (1 - WorldTerrain.sea_level)) - steepness*3f;
 					
 					if(splatWeights[0] < 0)
 					{
@@ -412,7 +466,7 @@ namespace AssemblyCSharp
 					}
 					
 					//Grass
-					splatWeights[1] = (height - sea_level/2) - steepness*3f;
+					splatWeights[1] = (height - WorldTerrain.sea_level) - steepness*3f;
 					
 					if(splatWeights[1] < 0)
 					{
@@ -444,8 +498,10 @@ namespace AssemblyCSharp
 					{
 						splatWeights[3] = steepness*10f;
 					}
+					*/
 					
 					float weightSum = splatWeights.Sum();
+					
 					
 					// Loop through each terrain texture
 					for(int i = 0; i<alphaLayers; i++)
@@ -459,55 +515,88 @@ namespace AssemblyCSharp
 			splatData = splatmapData;
 		}
 		
-		public static string getTerrainName(int x, int y){
-			string terrainName = "Terrain:" + x + "," + y;
-			return terrainName;
-		}
-		
-		public static Vector2 getGridCoordinate(Vector3 position){
-			Vector2 coordinate = new Vector2 ();
-			
-			coordinate.x = Mathf.FloorToInt (position.x / (size));
-			coordinate.y = Mathf.FloorToInt (position.z / (size));
-			
-			return coordinate;
-		}
-		
-		public static int getGridDistance(Vector2 pos1, Vector2 pos2){
-			return Mathf.FloorToInt(Mathf.Sqrt ( Mathf.Pow((pos1.x - pos2.x),2) + Mathf.Pow((pos1.y - pos2.y),2)));
-		}
-		
-		public struct LocalCoordinate
+		public void setNeighbors()
 		{
-			public Vector2 tileAddress;
-			public Vector2 localCoordinate;
+			List<string> neighbors = new List<string>();
+			
+			int tileX = (int)position.x;
+			int tileY = (int)position.y;
+			
+			neighbors.Add(WorldTerrain.getTerrainName(tileX - 1, tileY));
+			neighbors.Add(WorldTerrain.getTerrainName(tileX, tileY + 1));
+			neighbors.Add(WorldTerrain.getTerrainName(tileX + 1, tileY));
+			neighbors.Add(WorldTerrain.getTerrainName(tileX, tileY - 1));
+			
+			List<TerrainTile> terrains = new List<TerrainTile>();
+			
+			foreach(string neighbor in neighbors)
+			{
+				TerrainTile neighborTile = null;
+				if(WorldTerrain.terrainMap.TryGetValue(neighbor, out neighborTile))
+				{
+					terrains.Add(neighborTile);
+				}
+				else
+				{
+					terrains.Add(null);
+				}
+			}
+			
+			if(terrains.Count == 4)
+			{
+				Terrain tileTerrain = (Terrain)terrain.GetComponent(typeof(Terrain));
+				
+				Terrain left = null;
+				Terrain top = null;
+				Terrain right = null;
+				Terrain bottom = null;
+				
+				if(terrains[0] != null)
+				{
+					left = terrains[0].getTerrain;
+					
+					if(!terrains[0].neighbors.Contains (this))
+					{
+						terrains[0].setNeighbors();
+					}
+				}
+				if(terrains[1] != null)
+				{
+					top = terrains[1].getTerrain;
+					
+					if(!terrains[1].neighbors.Contains (this))
+					{
+						terrains[1].setNeighbors();
+					}
+				}
+				if(terrains[2] != null)
+				{
+					right = terrains[2].getTerrain;
+					
+					if(!terrains[2].neighbors.Contains (this))
+					{
+						terrains[2].setNeighbors();
+					}
+				}
+				if(terrains[3] != null)
+				{
+					bottom = terrains[3].getTerrain;
+					
+					if(!terrains[3].neighbors.Contains (this))
+					{
+						terrains[3].setNeighbors();
+					}
+				}
+				
+				this.neighbors = terrains.ToArray();
+				
+				tileTerrain.SetNeighbors(left, top, right, bottom);
+			}
+			
+			
 		}
 		
-		/// <summary>
-		/// Converts worldspace coordinates to local coordinates in a tile
-		/// Since different aspects of a tile may have different widths,
-		/// width must be specified
-		/// </summary>
-		/// <returns>The to local.</returns>
-		/// <param name="position">Position.</param>
-		/// <param name="width">Width.</param>
-		public static LocalCoordinate WorldToLocal(Vector3 position, int width)
-		{
-			LocalCoordinate result = new LocalCoordinate();
-			
-			result.tileAddress = getGridCoordinate(position);
-			
-			float remainderX = position.x - (result.tileAddress.x * size);
-			float remainderY = position.y - (result.tileAddress.y * size);
-			
-			float relativeX = Mathf.FloorToInt(remainderX * width);
-			float relativeY = Mathf.FloorToInt(remainderX * width);
-			
-			result.localCoordinate.x = relativeX;
-			result.localCoordinate.y = relativeY;
-			
-			return result;
-		}
+
 	}
 }
 

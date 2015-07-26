@@ -46,11 +46,14 @@
 	</Reference>
   </ItemGroup>
   <ItemGroup>
+     <Compile Include="Assets\CustomScripts\ManipulateTerrain.cs" />
      <Compile Include="Assets\CustomScripts\PreventFallingUnderMap.cs" />
+     <Compile Include="Assets\CustomScripts\SplatMapComparator.cs" />
      <Compile Include="Assets\CustomScripts\TerrainLoader.cs" />
      <Compile Include="Assets\CustomScripts\TerrainTile.cs" />
      <Compile Include="Assets\CustomScripts\Test.cs" />
      <Compile Include="Assets\CustomScripts\WorldGenerator.cs" />
+     <Compile Include="Assets\CustomScripts\WorldTerrain.cs" />
      <Compile Include="Assets\libNoise\Generator\Billow.cs" />
      <Compile Include="Assets\libNoise\Generator\Checker.cs" />
      <Compile Include="Assets\libNoise\Generator\Const.cs" />

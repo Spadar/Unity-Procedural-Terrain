@@ -251,10 +251,15 @@ namespace AssemblyCSharp
 			//    the slope towards the higher-elevation areas.  This shrinks the areas
 			//    in which the rough terrain appears, increasing the "rarity" of rough
 			//    terrain.
-			Terrace terrainTypeDef = new Terrace(terrainTypeDef_tu);
-			terrainTypeDef.ControlPoints.Add(-1.0);
-			terrainTypeDef.ControlPoints.Add(shelf_level + sea_level/2.0);
-			terrainTypeDef.ControlPoints.Add(1.0);
+			Terrace terrainTypeDefTerrace = new Terrace(terrainTypeDef_tu);
+			terrainTypeDefTerrace.ControlPoints.Add(-1.0);
+			terrainTypeDefTerrace.ControlPoints.Add(shelf_level + sea_level/2.0);
+			terrainTypeDefTerrace.ControlPoints.Add(1.0);
+			
+			ScaleBias terrainTypeDef = new ScaleBias(terrainTypeDefTerrace);
+			terrainTypeDef.Scale = 0.75f;
+			terrainTypeDef.Bias = -0.1f;
+			
 			#endregion
 			
 			#region High Mountainous Terrain
@@ -272,7 +277,7 @@ namespace AssemblyCSharp
 			//    mountains.
 			RidgedMultifractal mountainousHigh_rm0 = new RidgedMultifractal();
 			mountainousHigh_rm0.Seed = seed + 40;
-			mountainousHigh_rm0.Frequency = 7.0;//2371.0
+			mountainousHigh_rm0.Frequency = 5.0;//2371.0
 			mountainousHigh_rm0.Lacunarity = mountain_lacunarity;
 			mountainousHigh_rm0.OctaveCount = 4;//3
 			mountainousHigh_rm0.Quality = LibNoise.QualityMode.High;
@@ -282,7 +287,7 @@ namespace AssemblyCSharp
 			//    mountains.
 			RidgedMultifractal mountainousHigh_rm1 = new RidgedMultifractal();
 			mountainousHigh_rm1.Seed = seed + 41;
-			mountainousHigh_rm1.Frequency = 10.0;//2341.0
+			mountainousHigh_rm1.Frequency = 8.0;//2341.0
 			mountainousHigh_rm1.Lacunarity = mountain_lacunarity;
 			mountainousHigh_rm1.OctaveCount = 4;//3
 			mountainousHigh_rm1.Quality = LibNoise.QualityMode.High;
@@ -305,13 +310,13 @@ namespace AssemblyCSharp
 			#endregion
 			
 			ScaleBias mountainousHighScale = new ScaleBias(mountainousHigh);
-			mountainousHighScale.Scale = 0.775;
+			mountainousHighScale.Scale = 1.0;//0.775
 			mountainousHighScale.Bias = 0.0;
 			
 			Add mountainAdd = new Add(mountainousHighScale, terrainTypeDef);
 			
 			Select mountainSelect = new Select(terrainTypeDef, mountainAdd, terrainTypeDef);
-			mountainSelect.SetBounds(0.60, 2.0);
+			mountainSelect.SetBounds(0.55, 2.0);
 			mountainSelect.FallOff = 4.5;
 			
 			
