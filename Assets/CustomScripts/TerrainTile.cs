@@ -12,6 +12,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.IO;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Diagnostics;
 using UnityEngine;
 
 namespace AssemblyCSharp
@@ -28,7 +32,12 @@ namespace AssemblyCSharp
 		public float[,,] splatData;
 		
 		public GameObject water;
-				
+		
+		public static bool enableCaching = false;
+		
+		public int heightMapResolution;
+		public int splatMapResolution;
+		
 		private static double minAlt = 1.0;
 		private static double maxAlt = 0.0;
 		
@@ -108,11 +117,22 @@ namespace AssemblyCSharp
 			this.heightMap = heightMap;
 			this.tileName = tileName;
 			this.splatData = splatData;
+			
+			if(true)
+			{
+				this.heightMapResolution = (WorldTerrain.heightMapResolution - 1) + 1;
+				this.splatMapResolution = WorldTerrain.alphaMapResolution;
+			}
+			else
+			{
+				this.heightMapResolution = (WorldTerrain.heightMapResolution - 1)/2 + 1;
+				this.splatMapResolution = WorldTerrain.alphaMapResolution/2;
+			}
 		}
 		
 		public void setHeight(int x, int y, float value)
 		{
-			if(heightMap != null && (x < WorldTerrain.heightMapResolution && x >= 0) && (y < WorldTerrain.heightMapResolution && y >= 0))
+			if(heightMap != null && (x < heightMapResolution && x >= 0) && (y < heightMapResolution && y >= 0))
 			{
 				heightMap[x,y] = value;
 				
@@ -162,7 +182,7 @@ namespace AssemblyCSharp
 			}
 			
 			//We want the same result regardless of the heightmap resolution or the size of the terrain tiles.
-			float normalizationFactor = WorldTerrain.size / (WorldTerrain.heightMapResolution - 1f);
+			float normalizationFactor = WorldTerrain.size / (heightMapResolution - 1f);
 			
 			return maxSteepness / normalizationFactor;
 		}
@@ -199,10 +219,10 @@ namespace AssemblyCSharp
 			terrain.terrainData = terrainData;
 			collider.terrainData = terrainData;
 			
-			terrainData.heightmapResolution = WorldTerrain.heightMapResolution;
+			terrainData.heightmapResolution = heightMapResolution;
 			terrainData.size = WorldTerrain.dataSize;
 			
-			terrainData.alphamapResolution = WorldTerrain.alphaMapResolution;
+			terrainData.alphamapResolution = splatMapResolution;
 			
 			generateTerrainTexture(terrainData);
 			
@@ -220,6 +240,8 @@ namespace AssemblyCSharp
 			}
 			
 			setNeighbors();
+			
+			UnityEngine.Debug.Log(heightMapResolution);
 		}
 		
 		private void generateTerrainTexture(TerrainData data)
@@ -246,270 +268,257 @@ namespace AssemblyCSharp
 		
 		public void generateComplexHeightMap()
 		{
-			int nRows = WorldTerrain.heightMapResolution;
-			int nCols = WorldTerrain.heightMapResolution;
+			Stopwatch timer = new Stopwatch();
+			timer.Start();
+			
+			float[,] loadedHeights = tryLoadHeightMap();
+		
+			int nRows = heightMapResolution;
+			int nCols = heightMapResolution;
 			float[,] heights = new float[nRows, nCols];
 			
-			for (int y = 0; y < nCols; y++)
+			int heightRatio = (WorldTerrain.heightMapResolution - 1)/(heightMapResolution - 1);
+			
+			if(loadedHeights == null || loadedHeights.GetLength(0) != nRows || loadedHeights.GetLength(1) != nCols)
 			{
-				for (int x = 0; x < nRows; x++)
+				for (int y = 0; y < nCols; y++)
 				{
-					heights[x,y] = (float)((module.GetValue(((double)x + (((double)nRows - 1) * ((double)position.y))) / (double)WorldTerrain.noiseScale,((double)y + (((double)nCols - 1) * ((double)position.x))) / (double)WorldTerrain.noiseScale, 1)));
-					
-					if(heights[x,y] < minAltitude)
+					for (int x = 0; x < nRows; x++)
 					{
-						minAltitude = heights[x,y];
-					}
-					
-					if(heights[x,y] < minAlt)
-					{
-						minAlt = heights[x,y];
-						//Debug.Log("Min Altitude = " + minAlt + " Max Altitude = " + maxAlt);
-					}
-					
-					if(heights[x,y] > maxAlt)
-					{
-						maxAlt = heights[x,y];
-						//Debug.Log("Min Altitude = " + minAlt + " Max Altitude = " + maxAlt);
-						
+						double xCoord = ((double)(x * heightRatio) + (((double)WorldTerrain.heightMapResolution - 1) * ((double)position.y))) / (double)WorldTerrain.noiseScale;
+						double yCoord = ((double)(y * heightRatio) + (((double)WorldTerrain.heightMapResolution - 1) * ((double)position.x))) / (double)WorldTerrain.noiseScale;
+						heights[x,y] = (float)((module.GetValue(xCoord,yCoord, 1)));
 					}
 				}
+				
+				trySaveHeightMap(heights);
+			}
+			else
+			{
+				heights = loadedHeights;
 			}
 			
-			heightMap = heights;
+				heightMap = heights;
+				timer.Stop();
+				getMinAltitude();
 		}
 		
-		public void generateDetailMap()
+		private void getMinAltitude()
 		{
-			// Splatmap data is stored internally as a 3d array of floats, so declare a new empty array ready for your custom splatmap data:
-			float[, ,] splatmapData = new float[WorldTerrain.alphaMapResolution, WorldTerrain.alphaMapResolution, alphaLayers];
-			
-			for (int y = 0; y < WorldTerrain.alphaMapResolution; y++)
+			foreach(float height in heightMap)
 			{
-				for (int x = 0; x < WorldTerrain.alphaMapResolution; x++)
+				if(minAltitude > height)
 				{
-					// Normalise x/y coordinates to range 0-1 
-					float y_01 = (float)y/(float)WorldTerrain.alphaMapResolution;
-					float x_01 = (float)x/(float)WorldTerrain.alphaMapResolution;
+					minAltitude = height;
+				}	
+			}
+		}
+		
+		private float[,,] tryLoadSplatMap()
+		{
+			float[,,] data = null;
+			
+			string filename = WorldTerrain.resourcesPath + @"\splatMapCache\" + tileName + "splatmap.dat";
+			if(File.Exists(filename))
+			{
+				using (FileStream stream = File.Open(filename,FileMode.Open)) 
+				{
+					BinaryFormatter formatter = new BinaryFormatter();
 					
-					int equivX = Mathf.RoundToInt(x_01 * WorldTerrain.heightMapResolution);
-					int equivY = Mathf.RoundToInt(y_01 * WorldTerrain.heightMapResolution);
-					
-					// Sample the height at this location (note GetHeight expects int coordinates corresponding to locations in the heightmap array)
-					float height = getHeight(equivX,equivY);
-					
-					// Calculate the normal of the terrain (note this is in normalised coordinates relative to the overall terrain dimensions)
-					//Vector3 normal = terrainData.GetInterpolatedNormal(y_01,x_01);
-					
-					// Calculate the steepness of the terrain
-					float steepness = getSteepness(equivX, equivY);
-					
-					// Setup an array to record the mix of texture weights at this point
-					float[] splatWeights = new float[alphaLayers];
-					
-					// CHANGE THE RULES BELOW TO SET THE WEIGHTS OF EACH TEXTURE ON WHATEVER RULES YOU WANT
-					
-					float cliffThreshhold = 0.009f;
-					
-					SplatMapComparator[] comparators = WorldTerrain.heightTextureComparators.Values.ToArray();
-					//Height weights
-					for(int i = 0; i >= comparators.Length; i++)
-					{
-						SplatMapComparator comparator = comparators[i];
-						
-						float weight = comparator.calculateValue(height);
-						splatWeights[i] = weight;
-					}
-					
-					/*
-					//Sand
-					splatWeights[0] = ((1f - height) - (1 - WorldTerrain.sea_level)) - steepness*3f;
-					
-					if(splatWeights[0] < 0)
-					{
-						splatWeights[0] = 0;
-					}
-					
-					if(height < 0.2 && steepness < cliffThreshhold)
-					{
-						//splatWeights[0] = 1f;
-					}
-					
-					//Grass
-					splatWeights[1] = (height - WorldTerrain.sea_level) - steepness*3f;
-					
-					if(splatWeights[1] < 0)
-					{
-						splatWeights[1] = 0;
-					}
-					
-					if(height > 0.2 && height < 0.4 && steepness < cliffThreshhold)
-					{
-						//splatWeights[1] = 1f;
-					}
-					
-					//RockyGrass
-					splatWeights[2] = (height - 0.5f) - steepness*3f;
-					
-					if(splatWeights[2] < 0)
-					{
-						splatWeights[2] = 0;
-					}
-					
-					if(height > 0.4 && steepness < cliffThreshhold)
-					{
-						//splatWeights[2] = 1f;
-					}
-					
-					//Cliff
-					splatWeights[3] = 0f;
-					
-					if(steepness >= cliffThreshhold)
-					{
-						splatWeights[3] = steepness*10f;
-					}
-					*/
-					
-					float weightSum = splatWeights.Sum();
-					
-					
-					// Loop through each terrain texture
-					for(int i = 0; i<alphaLayers; i++)
-					{
-						// Assign this point to the splatmap array
-						splatmapData[x, y, i] = splatWeights[i]/weightSum;
-					}
+					// Deserialize the hashtable from the file and  
+					// assign the reference to the local variable.
+					data = (float[,,]) formatter.Deserialize(stream);
 				}
 			}
 			
-			splatData = splatmapData;
+			return data;
+		}
+		
+		private void trySaveSplatMap(float[,,] heights)
+		{
+			if(enableCaching)
+			{
+				string filename = WorldTerrain.resourcesPath + @"\splatMapCache\" + tileName + "splatmap.dat";
+				if(File.Exists(filename))
+				{
+					File.Delete(filename);
+				}
+				using (FileStream stream = File.Create(filename)) 
+				{
+					BinaryFormatter formatter = new BinaryFormatter();
+					formatter.Serialize(stream, heights);
+					stream.Close();
+				}
+			}
+		}
+		
+		private float[,] tryLoadHeightMap()
+		{
+			float[,] heights = null;
+		
+			string filename = WorldTerrain.resourcesPath + @"\heightMapCache\" + tileName + "heightmap.dat";
+			if(File.Exists(filename))
+			{
+				using (FileStream stream = File.Open(filename,FileMode.Open)) 
+				{
+					BinaryFormatter formatter = new BinaryFormatter();
+					
+					heights = (float[,]) formatter.Deserialize(stream);
+				}
+			}
+			
+			return heights;
+		}
+		
+		private void trySaveHeightMap(float[,] heights)
+		{
+			if(enableCaching)
+			{
+				string filename = WorldTerrain.resourcesPath + @"\heightMapCache\" + tileName + "heightmap.dat";
+				if(File.Exists(filename))
+				{
+					File.Delete(filename);
+				}
+				using (FileStream stream = File.Create(filename)) 
+				{
+					BinaryFormatter formatter = new BinaryFormatter();
+					formatter.Serialize(stream, heights);
+					stream.Close();
+				}
+			}
 		}
 		
 		public void generateSplatMap()
 		{
 			// Splatmap data is stored internally as a 3d array of floats, so declare a new empty array ready for your custom splatmap data:
-			float[, ,] splatmapData = new float[WorldTerrain.alphaMapResolution, WorldTerrain.alphaMapResolution, alphaLayers];
+			float[, ,] splatmapData = new float[splatMapResolution, splatMapResolution, alphaLayers];
 			
+			float[,,] loadedSplatmapData = tryLoadSplatMap();
 			
-			
-			for (int y = 0; y < WorldTerrain.alphaMapResolution; y++)
+			if(loadedSplatmapData == null || loadedSplatmapData.GetLength(0) != splatMapResolution || loadedSplatmapData.GetLength(1) != splatMapResolution || loadedSplatmapData.GetLength(2) != alphaLayers)
 			{
-				for (int x = 0; x < WorldTerrain.alphaMapResolution; x++)
+				for (int y = 0; y < splatMapResolution; y++)
 				{
-					// Normalise x/y coordinates to range 0-1 
-					float y_01 = (float)y/(float)WorldTerrain.alphaMapResolution;
-					float x_01 = (float)x/(float)WorldTerrain.alphaMapResolution;
-					
-					int equivX = Mathf.RoundToInt(x_01 * WorldTerrain.heightMapResolution);
-					int equivY = Mathf.RoundToInt(y_01 * WorldTerrain.heightMapResolution);
-					
-					// Sample the height at this location (note GetHeight expects int coordinates corresponding to locations in the heightmap array)
-					float height = getHeight(equivX,equivY);
-					
-					// Calculate the normal of the terrain (note this is in normalised coordinates relative to the overall terrain dimensions)
-					//Vector3 normal = terrainData.GetInterpolatedNormal(y_01,x_01);
-					
-					// Calculate the steepness of the terrain
-					float steepness = getSteepness(equivX, equivY);
-					
-					// Setup an array to record the mix of texture weights at this point
-					float[] splatWeights = new float[alphaLayers];
-					
-					// CHANGE THE RULES BELOW TO SET THE WEIGHTS OF EACH TEXTURE ON WHATEVER RULES YOU WANT
-					
-					float cliffThreshhold = 0.009f;
-					
-					SplatMapComparator[] heightComparators = WorldTerrain.heightTextureComparators.Values.ToArray();
-					//Height weights
-					for(int i = 0; i < heightComparators.Length; i++)
+					for (int x = 0; x < splatMapResolution; x++)
 					{
-						SplatMapComparator comparator = heightComparators[i];
+						// Normalise x/y coordinates to range 0-1 
+						float y_01 = (float)y/(float)splatMapResolution;
+						float x_01 = (float)x/(float)splatMapResolution;
 						
-						float weight = comparator.calculateValue(height);
-						splatWeights[i] = weight;
-					}
-					
-					SplatMapComparator[] steepnessComparators = WorldTerrain.steepnessTextureComparators.Values.ToArray();
-					//Height weights
-					for(int i = 0; i < steepnessComparators.Length; i++)
-					{
-						SplatMapComparator comparator = steepnessComparators[i];
+						int equivX = Mathf.RoundToInt(x_01 * heightMapResolution);
+						int equivY = Mathf.RoundToInt(y_01 * heightMapResolution);
 						
-						float weight = comparator.calculateValue(steepness);
-						if(WorldTerrain.steepnessTextureComparators["cliff"] != comparator)
+						// Sample the height at this location (note GetHeight expects int coordinates corresponding to locations in the heightmap array)
+						float height = getHeight(equivX,equivY);
+						
+						// Calculate the normal of the terrain (note this is in normalised coordinates relative to the overall terrain dimensions)
+						//Vector3 normal = terrainData.GetInterpolatedNormal(y_01,x_01);
+						
+						// Calculate the steepness of the terrain
+						float steepness = getSteepness(equivX, equivY);
+						
+						// Setup an array to record the mix of texture weights at this point
+						float[] splatWeights = new float[alphaLayers];
+						
+						// CHANGE THE RULES BELOW TO SET THE WEIGHTS OF EACH TEXTURE ON WHATEVER RULES YOU WANT
+						
+						float cliffThreshhold = 0.009f;
+						
+						SplatMapComparator[] heightComparators = WorldTerrain.heightTextureComparators.Values.ToArray();
+						//Height weights
+						for(int i = 0; i < heightComparators.Length; i++)
 						{
-							splatWeights[i] = splatWeights[i] - weight;
+							SplatMapComparator comparator = heightComparators[i];
+							
+							float weight = comparator.calculateValue(height);
+							splatWeights[i] = weight;
 						}
-						else
+						
+						SplatMapComparator[] steepnessComparators = WorldTerrain.steepnessTextureComparators.Values.ToArray();
+						//Height weights
+						for(int i = 0; i < steepnessComparators.Length; i++)
 						{
-							if(splatWeights[i] < weight)
+							SplatMapComparator comparator = steepnessComparators[i];
+							
+							float weight = comparator.calculateValue(steepness);
+							if(WorldTerrain.steepnessTextureComparators["cliff"] != comparator)
 							{
-								splatWeights[i] = weight;
+								splatWeights[i] = splatWeights[i] - weight;
+							}
+							else
+							{
+								if(splatWeights[i] < weight)
+								{
+									splatWeights[i] = weight;
+								}
 							}
 						}
-					}
-					
-					
-					
-					/*
-					//Sand
-					splatWeights[0] = ((1f - height) - (1 - WorldTerrain.sea_level)) - steepness*3f;
-					
-					if(splatWeights[0] < 0)
-					{
-						splatWeights[0] = 0;
-					}
-					
-					if(height < 0.2 && steepness < cliffThreshhold)
-					{
-						//splatWeights[0] = 1f;
-					}
-					
-					//Grass
-					splatWeights[1] = (height - WorldTerrain.sea_level) - steepness*3f;
-					
-					if(splatWeights[1] < 0)
-					{
-						splatWeights[1] = 0;
-					}
-					
-					if(height > 0.2 && height < 0.4 && steepness < cliffThreshhold)
-					{
-						//splatWeights[1] = 1f;
-					}
-					
-					//RockyGrass
-					splatWeights[2] = (height - 0.5f) - steepness*3f;
-					
-					if(splatWeights[2] < 0)
-					{
-						splatWeights[2] = 0;
-					}
-					
-					if(height > 0.4 && steepness < cliffThreshhold)
-					{
-						//splatWeights[2] = 1f;
-					}
-					
-					//Cliff
-					splatWeights[3] = 0f;
-					
-					if(steepness >= cliffThreshhold)
-					{
-						splatWeights[3] = steepness*10f;
-					}
-					*/
-					
-					float weightSum = splatWeights.Sum();
-					
-					
-					// Loop through each terrain texture
-					for(int i = 0; i<alphaLayers; i++)
-					{
-						// Assign this point to the splatmap array
-						splatmapData[x, y, i] = splatWeights[i]/weightSum;
+						
+						/*
+						//Sand
+						splatWeights[0] = ((1f - height) - (1 - WorldTerrain.sea_level)) - steepness*3f;
+						
+						if(splatWeights[0] < 0)
+						{
+							splatWeights[0] = 0;
+						}
+						
+						if(height < 0.2 && steepness < cliffThreshhold)
+						{
+							//splatWeights[0] = 1f;
+						}
+						
+						//Grass
+						splatWeights[1] = (height - WorldTerrain.sea_level) - steepness*3f;
+						
+						if(splatWeights[1] < 0)
+						{
+							splatWeights[1] = 0;
+						}
+						
+						if(height > 0.2 && height < 0.4 && steepness < cliffThreshhold)
+						{
+							//splatWeights[1] = 1f;
+						}
+						
+						//RockyGrass
+						splatWeights[2] = (height - 0.5f) - steepness*3f;
+						
+						if(splatWeights[2] < 0)
+						{
+							splatWeights[2] = 0;
+						}
+						
+						if(height > 0.4 && steepness < cliffThreshhold)
+						{
+							//splatWeights[2] = 1f;
+						}
+						
+						//Cliff
+						splatWeights[3] = 0f;
+						
+						if(steepness >= cliffThreshhold)
+						{
+							splatWeights[3] = steepness*10f;
+						}
+						*/
+						
+						float weightSum = splatWeights.Sum();
+						
+						// Loop through each terrain texture
+						for(int i = 0; i<alphaLayers; i++)
+						{
+							// Assign this point to the splatmap array
+							splatmapData[x, y, i] = splatWeights[i]/weightSum;
+						}
 					}
 				}
+				
+				trySaveSplatMap(splatmapData);
+			}
+			else
+			{
+				splatmapData = loadedSplatmapData;
 			}
 			
 			splatData = splatmapData;
@@ -596,7 +605,88 @@ namespace AssemblyCSharp
 			
 		}
 		
-
+		public void stitchTerrainBorders()
+		{
+			//The name of a tile mapped to the edge of the heightmap it lies along.
+			Dictionary<string, string> neighbors = new Dictionary<string, string>();
+			
+			int tileX = (int)position.x;
+			int tileY = (int)position.y;
+			
+			neighbors.Add(WorldTerrain.getTerrainName(tileX - 1, tileY), "left");
+			neighbors.Add(WorldTerrain.getTerrainName(tileX, tileY + 1), "top");
+			neighbors.Add(WorldTerrain.getTerrainName(tileX + 1, tileY), "right");
+			neighbors.Add(WorldTerrain.getTerrainName(tileX, tileY - 1), "bottom");
+			
+			
+			foreach(string neighbor in neighbors.Keys)
+			{
+				TerrainTile neighborTile = null;
+				if(WorldTerrain.terrainMap.TryGetValue(neighbor, out neighborTile))
+				{
+					if(neighborTile.heightMapResolution != heightMapResolution)
+					{
+						string edge = neighbors[neighborTile.tileName];
+						
+						if(heightMapResolution > neighborTile.heightMapResolution)
+						{
+							int factor = (heightMapResolution - 1)/(neighborTile.heightMapResolution - 1);
+							
+							bool incrementX = false;
+							bool incrementY = false;
+							
+							int startX = 0;
+							int startY = 0;
+							
+							//Determining which edge needs to be traversed.
+							switch(edge)
+							{
+								case "left":
+								{
+									incrementY = true;
+									break;
+								}
+								case "top":
+								{
+									incrementX = true;
+									startY = heightMapResolution;
+									break;
+								}
+								case "right":
+								{
+									incrementY = true;
+									startX = heightMapResolution;
+									break;
+								}
+								case "bottom":
+								{
+									incrementX = true;
+									break;
+								}
+							}
+							
+							for(int i = 0; i < heightMapResolution; i++)
+							{
+								Vector2 edgePoint = null;
+								
+								if(incrementX)
+								{
+									edgePoint = new Vector2(i, startY);
+								}
+								else if(incrementY)
+								{
+									edgePoint = new Vector2(startX, i);
+								}
+							}
+							
+							
+							
+							
+						}
+					}
+				}
+			}
+		}
 	}
 }
 

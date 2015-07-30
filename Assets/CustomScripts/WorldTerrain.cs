@@ -20,6 +20,7 @@ namespace AssemblyCSharp
 {
 	public class WorldTerrain
 	{
+		//These define the maximum resolutions for heightmaps and alphamaps(splatmap)
 		public static int heightMapResolution;
 		public static int alphaMapResolution;
 		public static int tileSize;
@@ -34,6 +35,8 @@ namespace AssemblyCSharp
 		public static GameObject waterPrefab;
 		
 		public static float sea_level = 0.3f;
+		
+		public static string resourcesPath;
 		
 		
 		#region TextureRanges
@@ -96,7 +99,7 @@ namespace AssemblyCSharp
 		public static Dictionary<string, TerrainTile> pendingTerrain = new Dictionary<string, TerrainTile>();
 		
 		public static string getTerrainName(int x, int y){
-			string terrainName = "Terrain:" + x + "," + y;
+			string terrainName = "Terrain[" + x + "," + y + "]";
 			return terrainName;
 		}
 		

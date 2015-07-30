@@ -27,6 +27,8 @@ public class TerrainLoader : MonoBehaviour
 	
 	public float sea_level;
 	
+	public bool enableCaching;
+	
 	private Vector2 currentCoordinate;
 	private float size;
 	private Vector3 dataSize;
@@ -62,6 +64,10 @@ public class TerrainLoader : MonoBehaviour
 		WorldTerrain.waterPrefab = waterPrefab;
 		WorldTerrain.sea_level = sea_level;
 		
+		WorldTerrain.resourcesPath = Application.dataPath + @"\Resources";
+		
+		TerrainTile.enableCaching = enableCaching;
+		
 		WorldGenerator test = new WorldGenerator();
 		
 		module = test.Module;
@@ -72,6 +78,7 @@ public class TerrainLoader : MonoBehaviour
 	// Update is called once per frame
 	void Update () 
 	{
+			
 		float altitude = gameObject.transform.position.y;
 		
 		//Debug.Log("Player Altitude: " + (altitude/ceilingHeight));
@@ -89,11 +96,11 @@ public class TerrainLoader : MonoBehaviour
 		
 		if(currentTile != null)
 		{
-			WorldTerrain.LocalCoordinate coord = WorldTerrain.WorldToLocal(gameObject.transform.position, WorldTerrain.heightMapResolution);
+			WorldTerrain.LocalCoordinate coord = WorldTerrain.WorldToLocal(gameObject.transform.position, currentTile.heightMapResolution);
 			
 			float playerSteepness = currentTile.getSteepness((int)coord.localCoordinate.x, (int)coord.localCoordinate.y);
 			
-			Debug.Log("Player Terrain Steepness: " + playerSteepness + ". Max found = " + maxSteepness);
+			//Debug.Log("Player Terrain Steepness: " + playerSteepness + ". Max found = " + maxSteepness);
 			
 			if(maxSteepness < playerSteepness)
 			{
@@ -172,6 +179,7 @@ public class TerrainLoader : MonoBehaviour
 					tile.load();
 					loadedTiles.Add(tile);
 					WorldTerrain.terrainMap.Add(tile.tileName, tile);
+					break;
 				}
 			}
 			else

@@ -372,7 +372,7 @@ namespace AssemblyCSharp
 			
 			Invert riverInvert = new Invert(riverClamp);
 			
-			Add riverAdd = new Add(riverInvert, new Const(0.4));
+			Add riverAdd = new Add(riverInvert, new Const(0.35));
 			
 			#endregion
 			
@@ -380,7 +380,13 @@ namespace AssemblyCSharp
 			Select riverSelect = new Select(worldScale, riverAdd, riverAdd);
 			riverSelect.SetBounds(0.0, 0.25);
 			riverSelect.FallOff = 3.0;
-			_module = riverSelect;
+			
+			//Only add rivers into the world when the altitude of the terrain is not ocean
+			//or mountainous
+			Select landSelect = new Select(worldScale, riverSelect, worldScale);
+			landSelect.SetBounds(0.35, 0.80);
+			landSelect.FallOff = 5.0;
+			_module = landSelect;
 			
 		}
 		
