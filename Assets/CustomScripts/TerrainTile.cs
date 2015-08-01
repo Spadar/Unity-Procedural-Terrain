@@ -38,9 +38,6 @@ namespace AssemblyCSharp
 		public int heightMapResolution;
 		public int splatMapResolution;
 		
-		private static double minAlt = 1.0;
-		private static double maxAlt = 0.0;
-		
 		private readonly int alphaLayers = 4;
 				
 		private float minAltitude = 1.0f;
@@ -48,6 +45,7 @@ namespace AssemblyCSharp
 		public bool isLoading = false;
 		
 		public TerrainTile[] neighbors = new TerrainTile[4];
+		public List<TerrainTile> stitchedTo = new List<TerrainTile>();
 		
 		public bool hasWater
 		{
@@ -109,6 +107,157 @@ namespace AssemblyCSharp
 			}
 		}
 		
+		/// <summary>
+		/// Gets the edge between this terrain and the given terrain
+		/// </summary>
+		/// <returns>The edge.</returns>
+		/// <param name="neighbors">Neighbors.</param>
+		public float[] getEdge(TerrainTile neighbor)
+		{
+			float[] edge = new float[heightMapResolution];
+		
+			Vector2 dir = position - neighbor.position;
+			
+			string vecString = (int)dir.x + "," + (int)dir.y;
+			
+			bool incrementX = false;
+			bool incrementY = false;
+			
+			int startX = 0;
+			int startY = 0;
+			
+			//Determining which edge needs to be traversed.
+			switch(vecString)
+			{
+				//Left
+			case "0,1":
+			{
+				incrementY = true;
+				break;
+			}
+				//Top
+			case "1,0":
+			{
+				incrementX = true;
+				break;
+			}
+				//Right
+			case "0,-1":
+			{
+				incrementY = true;
+				startX = heightMapResolution - 1;
+				break;
+			}
+				//Bottom
+			case "-1,0":
+			{
+				incrementX = true;
+				startY = heightMapResolution - 1;
+				break;
+			}
+				//Tiles are not adjacent and no edge is shared
+			default:
+				{
+					return null;
+				}
+			}
+			
+			//Construct our array which represents the edge
+			for(int i = 0; i < heightMapResolution; i++)
+			{
+				//Based on the rules we defined earlier we'll move along an edge
+				Vector2 edgePoint = new Vector2();
+				
+				if(incrementX)
+				{
+					edgePoint = new Vector2(i, startY);
+				}
+				else if(incrementY)
+				{
+					edgePoint = new Vector2(startX, i);
+				}
+				
+				//In order to stitch the edges, we'll have to make the edge match the lower resolution terrain's edges.
+				//We'll do this by taking the factor we found earlier, which represents the number of ratio of points between the two terrains
+				//where the mod of i divided by this factor is 0, the heights on the terrain should line up.
+				//If we make a smooth line from mod0 point mod0 point, the high resolution edge should match the low resolution edge. 
+
+				 edge[i] = getHeight((int)edgePoint.x, (int)edgePoint.y);
+			}
+			
+			return edge;
+		}
+		
+		public void setEdge(float[] heights, TerrainTile neighbor)
+		{
+			Vector2 dir = position - neighbor.position;
+			
+			string vecString = (int)dir.x + "," + (int)dir.y;
+			
+			bool incrementX = false;
+			bool incrementY = false;
+			
+			int startX = 0;
+			int startY = 0;
+			
+			//Determining which edge needs to be traversed.
+			switch(vecString)
+			{
+				//Left
+			case "0,1":
+			{
+				incrementY = true;
+				break;
+			}
+				//Top
+			case "1,0":
+			{
+				incrementX = true;
+				break;
+			}
+				//Right
+			case "0,-1":
+			{
+				incrementY = true;
+				startX = heightMapResolution - 1;
+				break;
+			}
+				//Bottom
+			case "-1,0":
+			{
+				incrementX = true;
+				startY = heightMapResolution - 1;
+				break;
+			}
+			}
+			
+			//Construct our array which represents the edge
+			for(int i = 0; i < heightMapResolution; i++)
+			{
+				//Based on the rules we defined earlier we'll move along an edge
+				Vector2 edgePoint = new Vector2();
+				
+				if(incrementX)
+				{
+					edgePoint = new Vector2(i, startY);
+				}
+				else if(incrementY)
+				{
+					edgePoint = new Vector2(startX, i);
+				}
+				
+				//In order to stitch the edges, we'll have to make the edge match the lower resolution terrain's edges.
+				//We'll do this by taking the factor we found earlier, which represents the number of ratio of points between the two terrains
+				//where the mod of i divided by this factor is 0, the heights on the terrain should line up.
+				//If we make a smooth line from mod0 point mod0 point, the high resolution edge should match the low resolution edge. 
+				
+				setHeight((int)edgePoint.x, (int)edgePoint.y, heights[i]);
+			}
+			
+			refreshTerrain();
+			neighbor.refreshTerrain();
+		}
+		
 		public TerrainTile(Vector2 position, string tileName, int dist, float[,] heightMap, float[,,] splatData, GameObject terrain)
 		{
 			this.position = position;
@@ -118,7 +267,7 @@ namespace AssemblyCSharp
 			this.tileName = tileName;
 			this.splatData = splatData;
 			
-			if(true)
+			if(dist <= 1)
 			{
 				this.heightMapResolution = (WorldTerrain.heightMapResolution - 1) + 1;
 				this.splatMapResolution = WorldTerrain.alphaMapResolution;
@@ -135,9 +284,6 @@ namespace AssemblyCSharp
 			if(heightMap != null && (x < heightMapResolution && x >= 0) && (y < heightMapResolution && y >= 0))
 			{
 				heightMap[x,y] = value;
-				
-				Terrain terr = (Terrain)terrain.GetComponent(typeof(Terrain));
-				terr.terrainData.SetHeights(0,0,heightMap);
 			}
 		}
 		
@@ -185,6 +331,39 @@ namespace AssemblyCSharp
 			float normalizationFactor = WorldTerrain.size / (heightMapResolution - 1f);
 			
 			return maxSteepness / normalizationFactor;
+		}
+		
+		public void refreshTerrain()
+		{
+			Terrain oldTerrain = (Terrain)this.terrain.GetComponent(typeof(Terrain));
+			GameObject.DestroyImmediate(oldTerrain);
+			
+			TerrainCollider oldCollider = (TerrainCollider)this.terrain.GetComponent(typeof(TerrainCollider));
+			GameObject.DestroyImmediate(oldCollider);
+			
+			this.terrain.AddComponent(typeof(Terrain));
+			Terrain terrain = (Terrain)this.terrain.GetComponent(typeof(Terrain));
+			
+			this.terrain.AddComponent(typeof(TerrainCollider));
+			TerrainCollider collider = (TerrainCollider)terrain.GetComponent(typeof(TerrainCollider));
+			
+			TerrainData terrainData = new TerrainData();
+			
+			terrainData.thickness = 1000;
+			
+			terrain.terrainData = terrainData;
+			collider.terrainData = terrainData;
+			
+			terrainData.heightmapResolution = heightMapResolution;
+			terrainData.size = WorldTerrain.dataSize;
+			
+			terrainData.alphamapResolution = splatMapResolution;
+			
+			generateTerrainTexture(terrainData);
+			
+			terrainData.SetHeights(0,0, heightMap);
+			
+			terrainData.SetAlphamaps(0, 0, splatData);
 		}
 		
 		public void unload()
@@ -240,8 +419,6 @@ namespace AssemblyCSharp
 			}
 			
 			setNeighbors();
-			
-			UnityEngine.Debug.Log(heightMapResolution);
 		}
 		
 		private void generateTerrainTexture(TerrainData data)
@@ -524,6 +701,66 @@ namespace AssemblyCSharp
 			splatData = splatmapData;
 		}
 		
+		public void stitchNeighbors()
+		{
+			List<string> neighbors = new List<string>();
+			
+			int tileX = (int)position.x;
+			int tileY = (int)position.y;
+			
+			neighbors.Add(WorldTerrain.getTerrainName(tileX - 1, tileY));
+			neighbors.Add(WorldTerrain.getTerrainName(tileX, tileY + 1));
+			neighbors.Add(WorldTerrain.getTerrainName(tileX + 1, tileY));
+			neighbors.Add(WorldTerrain.getTerrainName(tileX, tileY - 1));
+			
+			List<TerrainTile> terrains = new List<TerrainTile>();
+			
+			foreach(string neighbor in neighbors)
+			{
+				TerrainTile neighborTile = null;
+				if(WorldTerrain.terrainMap.TryGetValue(neighbor, out neighborTile))
+				{
+					terrains.Add(neighborTile);
+				}
+				else
+				{
+					terrains.Add(null);
+				}
+			}
+			
+			if(terrains.Count == 4)
+			{
+				if(terrains[0] != null)
+				{
+					if(terrains[0].heightMapResolution > heightMapResolution)
+					{
+						terrains[0].stitchTerrainBorders(this);
+					}
+				}
+				if(terrains[1] != null)
+				{
+					if(terrains[1].heightMapResolution > heightMapResolution)
+					{
+						terrains[1].stitchTerrainBorders(this);
+					}
+				}
+				if(terrains[2] != null)
+				{
+					if(terrains[2].heightMapResolution > heightMapResolution)
+					{
+						terrains[2].stitchTerrainBorders(this);
+					}
+				}
+				if(terrains[3] != null)
+				{
+					if(terrains[3].heightMapResolution > heightMapResolution)
+					{
+						terrains[3].stitchTerrainBorders(this);
+					}
+				}			
+			}
+		}
+		
 		public void setNeighbors()
 		{
 			List<string> neighbors = new List<string>();
@@ -601,91 +838,126 @@ namespace AssemblyCSharp
 				
 				tileTerrain.SetNeighbors(left, top, right, bottom);
 			}
-			
-			
 		}
 		
-		public void stitchTerrainBorders()
+		public void stitchTerrainBorders(TerrainTile tile)
 		{
-			//The name of a tile mapped to the edge of the heightmap it lies along.
-			Dictionary<string, string> neighbors = new Dictionary<string, string>();
+			//This number will represent how frequently the heights match up for the two edges
+			int factor = (heightMapResolution - 1)/(tile.heightMapResolution - 1);	
 			
-			int tileX = (int)position.x;
-			int tileY = (int)position.y;
+			float[] highResEdge = getEdge(tile);
+			float[] lowResEdge = tile.getEdge(this);
 			
-			neighbors.Add(WorldTerrain.getTerrainName(tileX - 1, tileY), "left");
-			neighbors.Add(WorldTerrain.getTerrainName(tileX, tileY + 1), "top");
-			neighbors.Add(WorldTerrain.getTerrainName(tileX + 1, tileY), "right");
-			neighbors.Add(WorldTerrain.getTerrainName(tileX, tileY - 1), "bottom");
+			float[] stitchedEdge = new float[heightMapResolution];
 			
+			string commaHighRes = "";
+			string commaLowRes = "";
+			string commaStitchedEdge = "";
 			
-			foreach(string neighbor in neighbors.Keys)
+			FileInfo lowResFile = new FileInfo(@"C:\Users\Jeffery\Desktop\tileComparisons\" + tile.position.x + "-" + tile.position.y + ".csv");
+			FileInfo highResFile = new FileInfo(@"C:\Users\Jeffery\Desktop\tileComparisons\" + position.x + "-" + position.y + ".csv");
+			FileInfo stitchComparison = new FileInfo(@"C:\Users\Jeffery\Desktop\tileComparisons\" + position.x + "," + position.y + " edge " + tile.position.x + "," + tile.position.y + ".csv");
+			
+//			if(!lowResFile.Exists)
+//			{
+//				using(StreamWriter writer = lowResFile.CreateText())
+//				{
+//					for(int y = 0; y < tile.heightMapResolution; y++)
+//					{
+//						for(int x = 0; x < tile.heightMapResolution; x++)
+//						{
+//							writer.Write(tile.heightMap[x,y]);
+//							if(x != tile.heightMapResolution-1)
+//							{
+//								writer.Write(",,");
+//							}
+//						}
+//						writer.WriteLine();
+//					}
+//				}
+//			}
+//			
+//			if(!highResFile.Exists)
+//			{
+//				using(StreamWriter writer = highResFile.CreateText())
+//				{
+//					for(int y = 0; y < heightMapResolution; y++)
+//					{
+//						for(int x = 0; x < heightMapResolution; x++)
+//						{
+//							writer.Write(heightMap[x,y]);
+//							if(x != heightMapResolution-1)
+//							{
+//								writer.Write(",");
+//							}
+//						}
+//						writer.WriteLine();
+//					}
+//				}
+//			}
+			
+			foreach(float height in lowResEdge)
 			{
-				TerrainTile neighborTile = null;
-				if(WorldTerrain.terrainMap.TryGetValue(neighbor, out neighborTile))
+				commaLowRes += height + ",,";
+			}
+			
+			foreach(float height in highResEdge)
+			{
+				commaHighRes += height + ",";
+			}
+			
+//			for(int i = 0; i < lowResEdge.Length; i++)
+//			{
+//				stitchedEdge[i*factor] = lowResEdge[i];
+//				
+//				if(i > 0 && i < lowResEdge.Length - 1)
+//				{
+//					float prevHeight = lowResEdge[i-(factor-1)];
+//					float nextHeight = lowResEdge[i+(factor-1)];
+//					
+//					stitchedEdge[(i*factor) - 1] = (prevHeight + nextHeight)/factor;
+//				}
+//			}
+
+			for(int i = 0; i < heightMapResolution; i++)
+			{
+				if(i%factor != 0)
 				{
-					if(neighborTile.heightMapResolution != heightMapResolution)
-					{
-						string edge = neighbors[neighborTile.tileName];
-						
-						if(heightMapResolution > neighborTile.heightMapResolution)
-						{
-							int factor = (heightMapResolution - 1)/(neighborTile.heightMapResolution - 1);
-							
-							bool incrementX = false;
-							bool incrementY = false;
-							
-							int startX = 0;
-							int startY = 0;
-							
-							//Determining which edge needs to be traversed.
-							switch(edge)
-							{
-								case "left":
-								{
-									incrementY = true;
-									break;
-								}
-								case "top":
-								{
-									incrementX = true;
-									startY = heightMapResolution;
-									break;
-								}
-								case "right":
-								{
-									incrementY = true;
-									startX = heightMapResolution;
-									break;
-								}
-								case "bottom":
-								{
-									incrementX = true;
-									break;
-								}
-							}
-							
-							for(int i = 0; i < heightMapResolution; i++)
-							{
-								Vector2 edgePoint = null;
-								
-								if(incrementX)
-								{
-									edgePoint = new Vector2(i, startY);
-								}
-								else if(incrementY)
-								{
-									edgePoint = new Vector2(startX, i);
-								}
-							}
-							
-							
-							
-							
-						}
-					}
+					int mod = i%factor;
+					
+					float prevHeight = highResEdge[i-1];
+					float nextHeight = highResEdge[i+1];
+					
+					float newValue = (prevHeight + nextHeight) / 2f;
+					
+					stitchedEdge[i] = newValue;
+				}
+				else
+				{
+					stitchedEdge[i] = highResEdge[i];
 				}
 			}
+			
+			foreach(float height in stitchedEdge)
+			{
+				commaStitchedEdge += height + ",";
+			}
+			
+			if(!stitchComparison.Exists)
+			{
+				using(StreamWriter writer = stitchComparison.CreateText())
+				{
+					writer.WriteLine(commaHighRes);
+					writer.WriteLine(commaLowRes);
+					writer.WriteLine(commaStitchedEdge);
+				}
+			}
+			setEdge(stitchedEdge, tile);
+			if(!stitchedTo.Contains(tile))
+			{
+				stitchedTo.Add(tile);
+			}
+			
 		}
 	}
 }

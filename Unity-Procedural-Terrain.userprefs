@@ -1,16 +1,22 @@
 ﻿<Properties>
-  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" PreferredExecutionTarget="MonoDevelop.Default" />
   <MonoDevelop.Ide.Workbench ActiveDocument="Assets\CustomScripts\TerrainTile.cs">
     <Files>
-      <File FileName="Assets\CustomScripts\TerrainTile.cs" Line="682" Column="8" />
-      <File FileName="Assets\CustomScripts\TerrainLoader.cs" Line="90" Column="34" />
+      <File FileName="Assets\CustomScripts\TerrainTile.cs" Line="156" Column="11" />
+      <File FileName="Assets\CustomScripts\TerrainLoader.cs" Line="212" Column="160" />
       <File FileName="Assets\CustomScripts\WorldTerrain.cs" Line="23" Column="80" />
-      <File FileName="Assets\CustomScripts\WorldGenerator.cs" Line="389" Column="24" />
+      <File FileName="Assets\CustomScripts\WorldGenerator.cs" Line="1" Column="1" />
       <File FileName="Assets\CustomScripts\SplatMapComparator.cs" Line="1" Column="1" />
     </Files>
     <Pads>
       <Pad Id="ProjectPad">
-        <State expanded="True" selected="True" />
+        <State expanded="True">
+          <Node name="Assembly-CSharp" expanded="True">
+            <Node name="CustomScripts" expanded="True">
+              <Node name="TerrainTile.cs" selected="True" />
+            </Node>
+          </Node>
+        </State>
       </Pad>
       <Pad Id="ClassPad">
         <State expanded="True" selected="True" />
@@ -21,14 +27,17 @@
           <Value>this.terrainMap</Value>
           <Value>weight</Value>
           <Value>steepness</Value>
+          <Value>newValue</Value>
+          <Value>highResEdge[0]</Value>
+          <Value>lowResEdge[0]</Value>
+          <Value>this.position</Value>
+          <Value>tile.position</Value>
         </State>
       </Pad>
     </Pads>
   </MonoDevelop.Ide.Workbench>
   <MonoDevelop.Ide.DebuggingService.Breakpoints>
-    <BreakpointStore>
-      <Breakpoint file="A:\GitHub\Unity-Procedural-Terrain\Assets\CustomScripts\TerrainLoader.cs" line="134" />
-    </BreakpointStore>
+    <BreakpointStore />
   </MonoDevelop.Ide.DebuggingService.Breakpoints>
   <MonoDevelop.Ide.DebuggingService.PinnedWatches />
 </Properties>

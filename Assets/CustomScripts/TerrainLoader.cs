@@ -29,6 +29,8 @@ public class TerrainLoader : MonoBehaviour
 	
 	public bool enableCaching;
 	
+	public bool stitchTerrain;
+	
 	private Vector2 currentCoordinate;
 	private float size;
 	private Vector3 dataSize;
@@ -40,7 +42,6 @@ public class TerrainLoader : MonoBehaviour
 	
 	int threadCount = 0;
 	
-	private float maxHeight = 0;
 	private float maxSteepness = 0;
 	
 	LibNoise.ModuleBase module;
@@ -78,7 +79,8 @@ public class TerrainLoader : MonoBehaviour
 	// Update is called once per frame
 	void Update () 
 	{
-			
+		stitch();
+		
 		float altitude = gameObject.transform.position.y;
 		
 		//Debug.Log("Player Altitude: " + (altitude/ceilingHeight));
@@ -89,26 +91,6 @@ public class TerrainLoader : MonoBehaviour
 
 		currentCoordinate = coordinate;
 		CoordChangeEvent(currentCoordinate);
-		
-		TerrainTile currentTile;
-				
-		WorldTerrain.terrainMap.TryGetValue(WorldTerrain.getTerrainName((int)coordinate.x, (int)coordinate.y), out currentTile);
-		
-		if(currentTile != null)
-		{
-			WorldTerrain.LocalCoordinate coord = WorldTerrain.WorldToLocal(gameObject.transform.position, currentTile.heightMapResolution);
-			
-			float playerSteepness = currentTile.getSteepness((int)coord.localCoordinate.x, (int)coord.localCoordinate.y);
-			
-			//Debug.Log("Player Terrain Steepness: " + playerSteepness + ". Max found = " + maxSteepness);
-			
-			if(maxSteepness < playerSteepness)
-			{
-				maxSteepness = playerSteepness;
-			}
-			
-			//currentTile.setHeight((int)coord.localCoordinate.x, (int)coord.localCoordinate.y, currentTile.getHeight((int)coord.localCoordinate.x, (int)coord.localCoordinate.y) + 0.01f);
-		}
 		
 		cullTerrain();
 		
@@ -216,6 +198,27 @@ public class TerrainLoader : MonoBehaviour
 		catch(UnityException)
 		{
 			Interlocked.Add(ref threadCount, -1);
+		}
+	}
+	
+	private void stitch()
+	{
+		if(stitchTerrain)
+		{
+			foreach(TerrainTile tile in WorldTerrain.terrainMap.Values)
+			{
+				foreach(TerrainTile neighbor in tile.neighbors)
+				{
+					if(neighbor != null && neighbor.heightMapResolution < tile.heightMapResolution && !tile.stitchedTo.Contains(neighbor) && neighbor.neighbors.Contains(tile))
+					{
+						tile.stitchTerrainBorders(neighbor);
+						
+						tile.refreshTerrain();
+						neighbor.refreshTerrain();
+						break;
+					}
+				}
+			}
 		}
 	}
 	
