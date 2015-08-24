@@ -5,8 +5,10 @@ using System.Linq;
 using System.Threading;
 using LibNoise.Generator;
 using LibNoise.Operator;
+using System.Reflection;
 using AssemblyCSharp;
 
+//[ExecuteInEditMode]
 public class TerrainLoader : MonoBehaviour 
 {
 	
@@ -31,6 +33,8 @@ public class TerrainLoader : MonoBehaviour
 	
 	public bool stitchTerrain;
 	
+	public Vector2 startOrigin;
+		
 	private Vector2 currentCoordinate;
 	private float size;
 	private Vector3 dataSize;
@@ -44,13 +48,21 @@ public class TerrainLoader : MonoBehaviour
 	
 	private float maxSteepness = 0;
 	
+	private TerrainTile previousTerrain;
+	
+	private TerrainTile currentTerrain;
+	
 	LibNoise.ModuleBase module;
+	
+	public float playerAltitude;
 			
 	// Use this for initialization
 	void Start () {
 		
 		dataSize = new Vector3 (tileSize, ceilingHeight, tileSize);
 		size = dataSize.x;
+		
+		WorldTerrain.player = gameObject;
 		
 		WorldTerrain.alphaMapResolution = alphaMapResolution;
 		WorldTerrain.heightMapResolution = heightMapResolution;
@@ -74,23 +86,49 @@ public class TerrainLoader : MonoBehaviour
 		module = test.Module;
 		
 		TerrainTile.module = test.Module;
-	}
-	
+		
+		playerAltitude = 2500;
+		
+		WorldTerrain.origin = startOrigin;
+	}	
 	// Update is called once per frame
 	void Update () 
 	{
-		stitch();
-		
 		float altitude = gameObject.transform.position.y;
 		
-		//Debug.Log("Player Altitude: " + (altitude/ceilingHeight));
 		
 		//We want to populate the surrounding X chunks around the player
 		//First, we find the XY coordinate of the player
 		Vector2 coordinate = WorldTerrain.getGridCoordinate(gameObject.transform.position);
+				
+		//WorldTerrain.LocalCoordinate lc = WorldTerrain.WorldToLocalExact(gameObject.transform.position, (int)WorldTerrain.size);
+		
+		//Debug.Log("Local Coord: [" + lc.localCoordinate.x + "," + lc.localCoordinate.y + "]");
+		Debug.Log("NewCoord: [" + coordinate.x + "," + coordinate.y + "]");
+		Debug.Log("Origin: [" + WorldTerrain.origin.x + "," + WorldTerrain.origin.y + "]");
+		
+		if(currentCoordinate != coordinate)
+		{											
+			WorldTerrain.LocalCoordinate localCoord = WorldTerrain.WorldToLocalExact(gameObject.transform.position, (int)WorldTerrain.size);
+						
+			WorldTerrain.origin = coordinate;
+						
+			foreach(TerrainTile tile in WorldTerrain.terrainMap.Values)
+			{
+				tile.updatePosition();
+			}
+			
 
-		currentCoordinate = coordinate;
-		CoordChangeEvent(currentCoordinate);
+			Vector3 originalCoord = gameObject.transform.position;
+		
+			Vector2 shiftedPlayerCoord = WorldTerrain.LocalToWorld(localCoord);
+		
+			gameObject.transform.position = new Vector3(shiftedPlayerCoord.x,gameObject.transform.position.y, shiftedPlayerCoord.y);
+			
+			currentCoordinate = WorldTerrain.getGridCoordinate(gameObject.transform.position);
+			
+			CoordChangeEvent(currentCoordinate);
+		}
 		
 		cullTerrain();
 		
@@ -119,13 +157,13 @@ public class TerrainLoader : MonoBehaviour
 				
 				if((!existsInMap || isNull) && !WorldTerrain.pendingTerrain.ContainsKey(tileName) && WorldTerrain.getGridDistance(terrainCoord,coordinate) <= renderDistance)
 				{
-					surroundingTerrain.Add(new TerrainTile(terrainCoord, tileName, WorldTerrain.getGridDistance(terrainCoord, currentCoordinate), null, null, null));
+					surroundingTerrain.Add(new TerrainTile(terrainCoord, tileName, null, null, null));
 				}
 			}
 		}
 		
 		//Order list by distance from player
-		List<TerrainTile> orderedTerrain = surroundingTerrain.OrderBy(terrain => terrain.dist).ToList();
+		List<TerrainTile> orderedTerrain = surroundingTerrain.OrderBy(terrain => terrain.playerDistance).ToList();
 		
 		foreach(TerrainTile tile in orderedTerrain)
 		{
@@ -176,6 +214,13 @@ public class TerrainLoader : MonoBehaviour
 		}
 	}
 	
+	private void showTerrainMethods()
+	{
+		MethodInfo[] terrainMethods = typeof(Terrain).GetMethods();
+		
+		MethodInfo[] dataMethods = typeof(TerrainData).GetMethods();
+	}
+	
 	private void startGenerateThread(TerrainTile tile)
 	{
 		try
@@ -198,27 +243,6 @@ public class TerrainLoader : MonoBehaviour
 		catch(UnityException)
 		{
 			Interlocked.Add(ref threadCount, -1);
-		}
-	}
-	
-	private void stitch()
-	{
-		if(stitchTerrain)
-		{
-			foreach(TerrainTile tile in WorldTerrain.terrainMap.Values)
-			{
-				foreach(TerrainTile neighbor in tile.neighbors)
-				{
-					if(neighbor != null && neighbor.heightMapResolution < tile.heightMapResolution && !tile.stitchedTo.Contains(neighbor) && neighbor.neighbors.Contains(tile))
-					{
-						tile.stitchTerrainBorders(neighbor);
-						
-						tile.refreshTerrain();
-						neighbor.refreshTerrain();
-						break;
-					}
-				}
-			}
 		}
 	}
 	

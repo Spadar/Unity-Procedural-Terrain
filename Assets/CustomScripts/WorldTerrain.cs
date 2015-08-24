@@ -8,6 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 using UnityEngine;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -38,6 +39,17 @@ namespace AssemblyCSharp
 		
 		public static string resourcesPath;
 		
+		public static GameObject player;
+		
+		private static Queue<TerrainTile> refreshQueue = new Queue<TerrainTile>();
+		private static DateTime lastRefresh;
+		private static int refreshInterval = 1000;
+		
+		private static Queue<TerrainTile> stitchQueue = new Queue<TerrainTile>();
+		private static DateTime lastStitch;
+		private static int stitchInterval = 1000;
+				
+		public static Vector2 origin = new Vector2(0,0);
 		
 		#region TextureRanges
 		//These ranges define how various textures will be expressed in terrain based on altitude
@@ -90,8 +102,24 @@ namespace AssemblyCSharp
 		
 		#endregion
 	
-		public WorldTerrain ()
+		public WorldTerrain (GameObject playerObject)
 		{
+			player = playerObject;
+		}
+		
+		private void stitch()
+		{
+			foreach(TerrainTile tile in WorldTerrain.terrainMap.Values)
+			{
+				foreach(TerrainTile neighbor in tile.neighbors)
+				{
+					if(neighbor != null && neighbor.heightMapResolution < tile.heightMapResolution && neighbor.neighbors.Contains(tile) && !tile.stitchedTo.Contains(neighbor))
+					{
+						tile.stitchTerrainBorders(neighbor);
+						break;
+					}
+				}
+			}
 		}
 		
 		public static Dictionary<string, TerrainTile> terrainMap = new Dictionary<string, TerrainTile>();
@@ -106,8 +134,8 @@ namespace AssemblyCSharp
 		public static Vector2 getGridCoordinate(Vector3 position){
 			Vector2 coordinate = new Vector2 ();
 			
-			coordinate.x = Mathf.FloorToInt (position.x / (size));
-			coordinate.y = Mathf.FloorToInt (position.z / (size));
+			coordinate.x = Mathf.FloorToInt (position.x / (size)) + origin.x;
+			coordinate.y = Mathf.FloorToInt (position.z / (size)) + origin.y;
 			
 			return coordinate;
 		}
@@ -116,10 +144,87 @@ namespace AssemblyCSharp
 			return Mathf.FloorToInt(Mathf.Sqrt ( Mathf.Pow((pos1.x - pos2.x),2) + Mathf.Pow((pos1.y - pos2.y),2)));
 		}
 		
+		public static int getGridDistanceToPlayer(Vector2 pos)
+		{
+			return getGridDistance(pos, getGridCoordinate(player.transform.position));
+		}
+		
 		public struct LocalCoordinate
 		{
 			public Vector2 tileAddress;
 			public Vector2 localCoordinate;
+		}
+		
+		public static void queueTerrainForStitch(TerrainTile tile)
+		{
+			bool needsStitch = false;
+			
+			foreach(TerrainTile neighbor in tile.neighbors)
+			{
+				if(neighbor != null && neighbor.heightMapResolution < tile.heightMapResolution && !tile.stitchedTo.Contains(neighbor))
+				{
+					if(!stitchQueue.Contains(tile))
+					{
+						needsStitch = true;
+					}
+				}
+			}
+			
+			if(needsStitch)
+			{
+				stitchQueue.Enqueue(tile);
+			}
+		}
+		
+		public static void processStitchQueue()
+		{
+			double timeSinceLastStitch = DateTime.Now.Subtract(lastStitch).TotalMilliseconds;
+			if((lastStitch == null || timeSinceLastStitch >= stitchInterval) && stitchQueue.Count > 0)
+			{
+				TerrainTile tile = stitchQueue.Dequeue();
+				
+				tile.stitchNeighbors();
+												
+				foreach(TerrainTile stitched in tile.stitchedTo)
+				{
+					//queueTerrainForRefresh(stitched);
+				}
+				
+				//queueTerrainForRefresh(tile);
+				
+				
+				lastStitch = DateTime.Now;
+			}
+		}
+		
+		public static void queueTerrainForRefresh(TerrainTile tile)
+		{
+			if(!refreshQueue.Contains(tile))
+			{
+				refreshQueue.Enqueue(tile);
+			}
+		}
+		
+		public static void processRefreshQueue()
+		{
+			double timeSinceLastRefresh = DateTime.Now.Subtract(lastRefresh).TotalMilliseconds;
+			
+			if((lastRefresh == null || timeSinceLastRefresh >= refreshInterval) && refreshQueue.Count > 0)
+			{	
+				if(refreshQueue.Peek().stitchedTime != null && DateTime.Now.Subtract(refreshQueue.Peek().stitchedTime).TotalMilliseconds > refreshInterval)
+				{ 
+					TerrainTile tile = refreshQueue.Dequeue();
+					
+					//tile.refreshTerrain();
+					tile.UnityTerrain.ApplyDelayedHeightmapModification();
+					
+					//tile.setNeighbors();
+					
+					tile.UnityTerrain.Flush();
+					
+					lastRefresh = DateTime.Now;
+				}
+			}
 		}
 		
 		/// <summary>
@@ -136,17 +241,59 @@ namespace AssemblyCSharp
 			
 			result.tileAddress = getGridCoordinate(position);
 			
-			float remainderX = (position.x - (result.tileAddress.x * (float)size));
-			float remainderY = (position.z - (result.tileAddress.y * (float)size));
+			float remainderX = position.x/size;
+			float remainderY = position.z/size;
 			
-			float normalizedX = remainderX/(float)size;
-			float normalizedY = remainderY/(float)size;
+			float normalizedX = Mathf.Abs(remainderX - Mathf.Floor(remainderX));
+			float normalizedY = Mathf.Abs(remainderY - Mathf.Floor(remainderY));
 			
 			float relativeX = Mathf.FloorToInt(normalizedX * (float)width);
 			float relativeY = Mathf.FloorToInt(normalizedY * (float)width);
 			
 			result.localCoordinate.x = relativeY;
 			result.localCoordinate.y = relativeX;
+			
+			return result;
+		}
+		
+		/// <summary>
+		/// Converts worldspace coordinates to local coordinates in a tile
+		/// Since different aspects of a tile may have different widths,
+		/// width must be specified
+		/// </summary>
+		/// <returns>The to local.</returns>
+		/// <param name="position">Position.</param>
+		/// <param name="width">Width.</param>
+		public static LocalCoordinate WorldToLocalExact(Vector3 position, int width)
+		{
+			LocalCoordinate result = new LocalCoordinate();
+			
+			result.tileAddress = getGridCoordinate(position);
+			
+			float remainderX = position.x/size;
+			float remainderY = position.z/size;
+			
+			float normalizedX = Mathf.Abs(remainderX - Mathf.Floor(remainderX));
+			float normalizedY = Mathf.Abs(remainderY - Mathf.Floor(remainderY));
+			
+			float relativeX = normalizedX * (float)width;
+			float relativeY = normalizedY * (float)width;
+			
+			result.localCoordinate.x = relativeX;
+			result.localCoordinate.y = relativeY;
+			
+			return result;
+		}
+		
+		public static Vector2 LocalToWorld(LocalCoordinate localCoordinate)
+		{
+			Vector2 result = new Vector2();
+			
+			float originXoffset = ((localCoordinate.tileAddress.x - WorldTerrain.origin.x) * WorldTerrain.size);
+			float originYoffset = ((localCoordinate.tileAddress.y - WorldTerrain.origin.y) * WorldTerrain.size);
+			
+			result.x = localCoordinate.localCoordinate.x + originXoffset;
+			result.y = localCoordinate.localCoordinate.y + originYoffset;
 			
 			return result;
 		}
